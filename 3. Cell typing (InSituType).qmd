@@ -1,0 +1,167 @@
+---
+title: "Cell typing (InSituType)"
+author: "Pauline"
+date: today
+format: 
+    html:
+        self-contained: true
+        toc: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+## Load packages
+
+```{r, warning=FALSE, message=FALSE}
+
+library(SpatialExperiment)
+library(SpatialExperimentIO)
+library(SingleCellExperiment)
+library(Seurat)
+library(harmony)
+library(InSituType)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+```
+
+## Supervised cell typing with InSituType
+
+### Cluster markers
+
+```{r, warning=FALSE, message=FALSE}
+
+# Get the last version of the Seurat object
+cos_seurat_post <- readRDS("cos_seurat_post.rds")
+
+cluster_markers <- FindAllMarkers(cos_seurat_post, only.pos = TRUE)
+
+top_markers <- cluster_markers %>%
+  group_by(cluster) %>%
+  filter(p_val_adj < 0.05) %>%  # Filter significant markers
+  arrange(cluster, desc(avg_log2FC)) %>%  # Sort by cluster and log2FC
+  top_n(n = 5, wt = avg_log2FC)  # Select top 5 markers per cluster
+
+```
+
+### Prepare negative mean
+
+```{r, warning=FALSE, message=FALSE}
+
+# Get the filtered SpatialExperiment object
+cos_spe_filtered <- readRDS("cos_spe_filtered.rds")
+
+neg_probes_present <- grepl("^Negative", rownames(cos_spe_filtered))
+
+# Compute mean negative control counts per cell
+negmean <- as.matrix(colMeans(assay(cos_spe_filtered)[neg_probes_present, ]))
+
+```
+
+### Fast cohorting
+
+```{r}
+
+cohort_features <- grep("Max|Mean", colnames(cos_seurat_post@meta.data), value = TRUE)
+
+cohort <- fastCohorting(cos_seurat_post@meta.data[, cohort_features], gaussian_transform = TRUE)
+
+table(cohort)
+
+```
+
+### Clustering
+
+```{r, warning=FALSE, message=FALSE}
+
+# Get the filtered SpatialExperiment object
+cos_spe_final <- readRDS("cos_spe_final.rds")
+
+counts_celltyping <- assay(cos_spe_final, "counts") %>% t()
+
+data("ioprofiles")
+
+unsup_clusters <- insitutype(
+  x = counts_celltyping,
+  neg = negmean,
+  #assay_type = "RNA",
+  reference_profiles = ioprofiles,
+  update_reference_profiles = TRUE,
+  cohort = cohort,
+  # Enter your own per-cell background estimates here if you have them;
+  # otherwise insitutype will use the negprobes to estimate background for you.
+  bg = NULL,
+  # condensed to save time. n_clusts = 5:20 would be more optimal
+  n_clusts = 10:20,
+  # NULL value runs unsupervised clustering; entering a matrix here would run
+  # semi-supervised clustering.
+  n_phase1 = 200,
+  n_phase2 = 500,
+  n_phase3 = 2000,
+  n_starts = 1,
+  max_iters = 5
+)
+
+str(unsup_clusters)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+IST_heatmap <- heatmap(
+  sweep(unsup_clusters$profiles, 1, pmax(apply(unsup_clusters$profiles, 1, max), .2), "/"), 
+  scale = "none",
+  main = "Cluster mean expression profiles"
+  )
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+cols <- c(
+  "#b42380", "#7dfc00", "#0ec434", "#228c68", "#8ad8e8", "#c3a5b4", "#946aa2",
+  "#235b54", "#29bdab", "#3998f5", "#37294f", "#277da7", "#3750db", "#f22020",
+  "#991919", "#ffcba5", "#e68f66", "#c56133", "#96341c", "#632819", "#ffc413",
+  "#f47a22", "#2f2aa0", "#b732cc", "#772b9d", "#f07cab", "#d30b94", "#edeff3", 
+  "#5d4c86"
+)
+
+cols <- cols[seq_along(unique(unsup_clusters$clust))]
+names(cols) <- unique(unsup_clusters$clust)
+
+umap_df <- as.data.frame(Embeddings(cos_seurat_post, "umap"))
+umap_df$cluster <- factor(unsup_clusters$clust)
+
+umap_plot <- ggplot(umap_df, aes(x = umap_1, y = umap_2, color = cluster)) +
+  geom_point(alpha = 0.8, size = 1.5) +
+  scale_color_manual(values = cols) +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  labs(
+    title = "Cell Clusters in UMAP Space",
+    x = "UMAP 1",
+    y = "UMAP 2",
+    colour = "Cell types"
+  )
+
+spatial_df <- as.data.frame(Embeddings(cos_seurat_post, "spatial"))
+spatial_df$cluster <- factor(unsup_clusters$clust)
+
+spatial_plot <- ggplot(spatial_df, aes(x = spatial_1, y = spatial_2, color = cluster)) +
+  geom_point(alpha = 0.8, size = 1.5) +
+  scale_color_manual(values = cols) +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  labs(
+    title = "Spatial arrangement of cell clusters",
+    x = "",
+    y = "",
+    colour = "Cell types"
+  )
+
+umap_plot
+spatial_plot
+
+```

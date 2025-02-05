@@ -1,0 +1,148 @@
+---
+title: "CosMx data analysis"
+author: "Pauline"
+date: today
+format: 
+    html:
+        self-contained: true
+        toc: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+## Load packages
+
+```{r, warning=FALSE, message=FALSE}
+
+library(SpatialExperiment)
+library(SpatialExperimentIO)
+library(SingleCellExperiment)
+library(Seurat)
+library(harmony)
+library(InSituType)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+```
+
+## Create `SeuratObject` from `SpatialExperiment`
+
+```{r, warning=FALSE, message=FALSE}
+
+# Get the last version of the SpatialExperiment object
+cos_spe_final <- readRDS("cos_spe_final.RDS")
+
+counts <- assay(cos_spe_final, "counts") # Expression matrix
+meta_data <- as.data.frame(colData(cos_spe_final)) # Metadata
+spatial_coords <- as.data.frame(spatialCoords(cos_spe_final)) # Spatial coordinates
+colnames(spatial_coords) <- c("spatial_1", "spatial_2")
+
+cos_seurat <- CreateSeuratObject(
+  counts = counts,     
+  meta.data = meta_data    
+)
+
+```
+
+## Data processing and PCA
+
+```{r, warning=FALSE, message=FALSE}
+
+# Normalize the data
+cos_seurat <- NormalizeData(cos_seurat)
+
+# Identify variable features
+cos_seurat <- FindVariableFeatures(cos_seurat)
+
+# Scale data
+cos_seurat <- ScaleData(cos_seurat)
+
+# Run PCA
+cos_seurat <- RunPCA(cos_seurat, npcs = 30)
+
+```
+
+## UMAP with Seurat (without Harmony)
+
+```{r, warning=FALSE, message=FALSE}
+
+# Run UMAP and cluster analysis
+cos_seurat_pre <- RunUMAP(cos_seurat, dims = 1:30)
+cos_seurat_pre <- FindNeighbors(cos_seurat_pre, dims = 1:30)
+
+# Adjust resolution to achieve ~n_clusters
+cos_seurat_pre <- FindClusters(cos_seurat_pre, resolution = 0.4) 
+
+# Plot UMAP and clusters
+UMAP_pre <- DimPlot(cos_seurat_pre, reduction = "umap", label = TRUE) +
+  ggtitle("UMAP without use of harmony")
+
+# Adding spatial info to the SeuratObject
+cos_seurat_pre[["spatial"]] <- CreateDimReducObject(
+  embeddings = as.matrix(spatial_coords),
+  key = "spatial_",
+  assay = "RNA"
+)
+
+# Save the Seurat object for further use
+saveRDS(cos_seurat_pre, "cos_seurat_pre.rds")
+
+# Plot clusters with spatial context
+spatial_clusters_pre <- DimPlot(cos_seurat_pre, reduction = "spatial", label = FALSE)
+
+umap_patient_pre <- DimPlot(cos_seurat_pre, reduction = "umap", group.by = "group") + 
+  ggtitle("UMAP without use of Harmony (patient-level)")
+
+umap_patient_pre
+spatial_clusters_pre
+
+```
+
+## UMAP with Harmony integrated into Seurat workflow
+
+```{r, warning=FALSE, message=FALSE}
+
+# Run Harmony to integrate across patients
+cos_seurat_post <- RunHarmony(cos_seurat, group.by.vars = "group", dims.use = 1:30)
+
+# Run UMAP again on Harmony-corrected PCA
+cos_seurat_post <- RunUMAP(cos_seurat_post, reduction = "harmony", dims = 1:30)
+cos_seurat_post <- FindNeighbors(cos_seurat_post, reduction = "harmony", dims = 1:30)
+cos_seurat_post <- FindClusters(cos_seurat_post, resolution = 0.4)
+
+# UMAP plots after batch correction
+UMAP_post <- DimPlot(cos_seurat_post, reduction = "umap", group.by = "seurat_clusters") + 
+  ggtitle("UMAP After Batch Correction")
+
+# Adding spatial info to the SeuratObject
+cos_seurat_post[["spatial"]] <- CreateDimReducObject(
+  embeddings = as.matrix(spatial_coords),
+  key = "spatial_",
+  assay = "RNA"
+)
+
+# Save the Seurat object for further use
+saveRDS(cos_seurat_post, "cos_seurat_post.rds")
+
+# Plot clusters with spatial context
+spatial_clusters_post <- DimPlot(cos_seurat_post, reduction = "spatial", label = FALSE)
+
+umap_patient_post <- DimPlot(cos_seurat_post, reduction = "umap", group.by = "group") + 
+  ggtitle("UMAP after using Harmony (patient-level)")
+
+umap_patient_post
+spatial_clusters_post
+
+```
+
+## Summary
+
+```{r, warning=FALSE, message=FALSE}
+
+# Compare UMAPs before and after Harmony
+UMAP_pre + UMAP_post + umap_patient_pre + umap_patient_post
+
+```
+
