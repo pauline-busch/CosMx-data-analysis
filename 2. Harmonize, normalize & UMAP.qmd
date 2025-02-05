@@ -23,6 +23,7 @@ library(harmony)
 library(InSituType)
 library(dplyr)
 library(ggplot2)
+library(ggthemes)
 library(patchwork)
 
 ```
@@ -32,16 +33,25 @@ library(patchwork)
 ```{r, warning=FALSE, message=FALSE}
 
 # Get the last version of the SpatialExperiment object
-cos_spe_final <- readRDS("cos_spe_final.RDS")
+cos_spe_final <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_final.rds")
 
 counts <- assay(cos_spe_final, "counts") # Expression matrix
 meta_data <- as.data.frame(colData(cos_spe_final)) # Metadata
 spatial_coords <- as.data.frame(spatialCoords(cos_spe_final)) # Spatial coordinates
+
 colnames(spatial_coords) <- c("spatial_1", "spatial_2")
 
+# Build the SeuratObject
 cos_seurat <- CreateSeuratObject(
   counts = counts,     
   meta.data = meta_data    
+)
+
+# Adding spatial info to the SeuratObject
+cos_seurat[["spatial"]] <- CreateDimReducObject(
+  embeddings = as.matrix(spatial_coords),
+  key = "spatial_",
+  assay = "RNA"
 )
 
 ```
@@ -79,15 +89,8 @@ cos_seurat_pre <- FindClusters(cos_seurat_pre, resolution = 0.4)
 UMAP_pre <- DimPlot(cos_seurat_pre, reduction = "umap", label = TRUE) +
   ggtitle("UMAP without use of harmony")
 
-# Adding spatial info to the SeuratObject
-cos_seurat_pre[["spatial"]] <- CreateDimReducObject(
-  embeddings = as.matrix(spatial_coords),
-  key = "spatial_",
-  assay = "RNA"
-)
-
 # Save the Seurat object for further use
-saveRDS(cos_seurat_pre, "cos_seurat_pre.rds")
+saveRDS(cos_seurat_pre, "C:/CosMx/Datasets/6k/TMA2/rds files/cos_seurat_pre.rds")
 
 # Plot clusters with spatial context
 spatial_clusters_pre <- DimPlot(cos_seurat_pre, reduction = "spatial", label = FALSE)
@@ -116,15 +119,8 @@ cos_seurat_post <- FindClusters(cos_seurat_post, resolution = 0.4)
 UMAP_post <- DimPlot(cos_seurat_post, reduction = "umap", group.by = "seurat_clusters") + 
   ggtitle("UMAP After Batch Correction")
 
-# Adding spatial info to the SeuratObject
-cos_seurat_post[["spatial"]] <- CreateDimReducObject(
-  embeddings = as.matrix(spatial_coords),
-  key = "spatial_",
-  assay = "RNA"
-)
-
 # Save the Seurat object for further use
-saveRDS(cos_seurat_post, "cos_seurat_post.rds")
+saveRDS(cos_seurat_post, "C:/CosMx/Datasets/6k/TMA2/rds files/cos_seurat_post.rds")
 
 # Plot clusters with spatial context
 spatial_clusters_post <- DimPlot(cos_seurat_post, reduction = "spatial", label = FALSE)
@@ -146,3 +142,6 @@ UMAP_pre + UMAP_post + umap_patient_pre + umap_patient_post
 
 ```
 
+```{r}
+sessionInfo()
+```

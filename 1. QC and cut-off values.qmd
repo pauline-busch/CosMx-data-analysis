@@ -32,7 +32,7 @@ library(patchwork)
 
 ```{r, warning=FALSE, message=FALSE}
 
-cos_path <- "C:/CosMx/Data/6k/TMA2"
+cos_path <- "C:/CosMx/Datasets/6k/TMA2" # Adjust file path if necessary
 
 cos_spe <- readCosmxSXE(dirName = cos_path,
                         countMatPattern = "TMA2_biomedx_MAR_6K_exprMat_file.csv",
@@ -150,7 +150,6 @@ gene_density_plot
 
 negative_fraction_plot <- 
   ggplot(colData(cos_spe), aes(x = negative_fraction)) +
-  
   geom_histogram(binwidth = 0.01, fill = "purple", colour = "purple", alpha = 0.6) +
   
   # Change intercept to check cut-off values (e.g., "50")
@@ -247,7 +246,12 @@ cos_spe_final <- cos_spe_filtered[
   !grepl("^(Negative|SystemControl)", rownames(cos_spe_filtered)),
   ]
 
-# Save the final SpatialExperiment object for further use
-saveRDS(cos_spe_final, "cos_spe_final.rds")
+# Save the final SpatialExperiment objects for further use
+saveRDS(cos_spe_filtered, "C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_filtered.rds")
+saveRDS(cos_spe_final, "C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_final.rds")
 
+```
+
+```{r}
+sessionInfo()
 ```

@@ -23,6 +23,7 @@ library(harmony)
 library(InSituType)
 library(dplyr)
 library(ggplot2)
+library(ggthemes)
 library(patchwork)
 
 ```
@@ -34,7 +35,7 @@ library(patchwork)
 ```{r, warning=FALSE, message=FALSE}
 
 # Get the last version of the Seurat object
-cos_seurat_post <- readRDS("cos_seurat_post.rds")
+cos_seurat_post <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_seurat_post.rds")
 
 cluster_markers <- FindAllMarkers(cos_seurat_post, only.pos = TRUE)
 
@@ -51,7 +52,7 @@ top_markers <- cluster_markers %>%
 ```{r, warning=FALSE, message=FALSE}
 
 # Get the filtered SpatialExperiment object
-cos_spe_filtered <- readRDS("cos_spe_filtered.rds")
+cos_spe_filtered <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_filtered.rds")
 
 neg_probes_present <- grepl("^Negative", rownames(cos_spe_filtered))
 
@@ -77,7 +78,7 @@ table(cohort)
 ```{r, warning=FALSE, message=FALSE}
 
 # Get the filtered SpatialExperiment object
-cos_spe_final <- readRDS("cos_spe_final.rds")
+cos_spe_final <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_final.rds")
 
 counts_celltyping <- assay(cos_spe_final, "counts") %>% t()
 
@@ -164,4 +165,8 @@ spatial_plot <- ggplot(spatial_df, aes(x = spatial_1, y = spatial_2, color = clu
 umap_plot
 spatial_plot
 
+```
+
+```{r}
+sessionInfo()
 ```
