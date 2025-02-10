@@ -32,8 +32,10 @@ library(patchwork)
 
 ```{r, warning=FALSE, message=FALSE}
 
+cos_path <- "C:/CosMx/Datasets/6k/TMA1"
+
 # Get the last version of the SpatialExperiment object
-cos_spe_final <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_final.rds")
+cos_spe_final <- readRDS(file.path(cos_path, "rds files/cos_spe_final.rds"))
 
 counts <- assay(cos_spe_final, "counts") # Expression matrix
 meta_data <- as.data.frame(colData(cos_spe_final)) # Metadata
@@ -90,7 +92,7 @@ UMAP_pre <- DimPlot(cos_seurat_pre, reduction = "umap", label = TRUE) +
   ggtitle("UMAP without use of harmony")
 
 # Save the Seurat object for further use
-saveRDS(cos_seurat_pre, "C:/CosMx/Datasets/6k/TMA2/rds files/cos_seurat_pre.rds")
+saveRDS(cos_seurat_pre, file.path(cos_path, "rds files/cos_seurat_pre.rds"))
 
 # Plot clusters with spatial context
 spatial_clusters_pre <- DimPlot(cos_seurat_pre, reduction = "spatial", label = FALSE)
@@ -120,7 +122,7 @@ UMAP_post <- DimPlot(cos_seurat_post, reduction = "umap", group.by = "seurat_clu
   ggtitle("UMAP After Batch Correction")
 
 # Save the Seurat object for further use
-saveRDS(cos_seurat_post, "C:/CosMx/Datasets/6k/TMA2/rds files/cos_seurat_post.rds")
+saveRDS(cos_seurat_post, file.path(cos_path, "rds files/cos_seurat_post.rds"))
 
 # Plot clusters with spatial context
 spatial_clusters_post <- DimPlot(cos_seurat_post, reduction = "spatial", label = FALSE)
