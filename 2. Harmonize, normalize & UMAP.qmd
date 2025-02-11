@@ -24,7 +24,7 @@ library(InSituType)
 library(dplyr)
 library(ggplot2)
 library(ggthemes)
-library(patchwork)
+library(ggpubr)
 
 ```
 
@@ -88,8 +88,7 @@ cos_seurat_pre <- FindNeighbors(cos_seurat_pre, dims = 1:30)
 cos_seurat_pre <- FindClusters(cos_seurat_pre, resolution = 0.4) 
 
 # Plot UMAP and clusters
-UMAP_pre <- DimPlot(cos_seurat_pre, reduction = "umap", label = TRUE) +
-  ggtitle("UMAP without use of harmony")
+UMAP_pre <- DimPlot(cos_seurat_pre, reduction = "umap", label = TRUE)
 
 # Save the Seurat object for further use
 saveRDS(cos_seurat_pre, file.path(cos_path, "rds files/cos_seurat_pre.rds"))
@@ -97,11 +96,7 @@ saveRDS(cos_seurat_pre, file.path(cos_path, "rds files/cos_seurat_pre.rds"))
 # Plot clusters with spatial context
 spatial_clusters_pre <- DimPlot(cos_seurat_pre, reduction = "spatial", label = FALSE)
 
-umap_patient_pre <- DimPlot(cos_seurat_pre, reduction = "umap", group.by = "group") + 
-  ggtitle("UMAP without use of Harmony (patient-level)")
-
-umap_patient_pre
-spatial_clusters_pre
+umap_patient_pre <- DimPlot(cos_seurat_pre, reduction = "umap", group.by = "group")
 
 ```
 
@@ -118,8 +113,7 @@ cos_seurat_post <- FindNeighbors(cos_seurat_post, reduction = "harmony", dims = 
 cos_seurat_post <- FindClusters(cos_seurat_post, resolution = 0.4)
 
 # UMAP plots after batch correction
-UMAP_post <- DimPlot(cos_seurat_post, reduction = "umap", group.by = "seurat_clusters") + 
-  ggtitle("UMAP After Batch Correction")
+UMAP_post <- DimPlot(cos_seurat_post, reduction = "umap", label = TRUE)
 
 # Save the Seurat object for further use
 saveRDS(cos_seurat_post, file.path(cos_path, "rds files/cos_seurat_post.rds"))
@@ -127,11 +121,7 @@ saveRDS(cos_seurat_post, file.path(cos_path, "rds files/cos_seurat_post.rds"))
 # Plot clusters with spatial context
 spatial_clusters_post <- DimPlot(cos_seurat_post, reduction = "spatial", label = FALSE)
 
-umap_patient_post <- DimPlot(cos_seurat_post, reduction = "umap", group.by = "group") + 
-  ggtitle("UMAP after using Harmony (patient-level)")
-
-umap_patient_post
-spatial_clusters_post
+umap_patient_post <- DimPlot(cos_seurat_post, reduction = "umap", group.by = "group")
 
 ```
 
@@ -139,8 +129,33 @@ spatial_clusters_post
 
 ```{r, warning=FALSE, message=FALSE}
 
+ggsave("Total transcript counts per cell.tiff",
+       path = file.path(cos_path, "QC"),
+       compression = 'lzw')
+
 # Compare UMAPs before and after Harmony
-UMAP_pre + UMAP_post + umap_patient_pre + umap_patient_post
+UMAP_clusters <- annotate_figure(
+  ggarrange(UMAP_pre, UMAP_post, 
+            labels = c("A", "B"), 
+            ncol = 2, nrow = 1),
+  top = "UMAP clusters before and after batch correction")
+
+
+patient_clusters <- annotate_figure(
+  ggarrange(umap_patient_pre, umap_patient_post, 
+            labels = c("A", "B"), 
+            ncol = 2, nrow = 1),
+  top = "Patient clusters before and after batch correction")
+
+spatial <- annotate_figure(
+  ggarrange(spatial_clusters_pre, spatial_clusters_post, 
+            labels = c("A", "B"),
+            ncol = 2, nrow = 1),
+  top = "Clusters spatial distribution before and after batch correction")
+
+UMAP_clusters
+patient_clusters
+spatial
 
 ```
 

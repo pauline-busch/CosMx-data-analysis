@@ -19,6 +19,7 @@ library(SpatialExperiment)
 library(SpatialExperimentIO)
 library(SingleCellExperiment)
 library(Seurat)
+library(scater)
 library(harmony)
 library(InSituType)
 library(dplyr)
@@ -32,11 +33,11 @@ library(ggpubr)
 
 ```{r, warning=FALSE, message=FALSE}
 
-cos_path <- "C:/CosMx/Datasets/6k/TMA1" # Adjust file path if necessary
+cos_path <- "C:/CosMx/Datasets/6k/TMA2" # Adjust file path if necessary
 
 cos_spe <- readCosmxSXE(dirName = cos_path,
-                        countMatPattern = "TMA1_biomedx_MAR_6K_exprMat_file.csv",
-                        metaDataPattern = "TMA1_biomedx_MAR_6K_metadata_file.csv",
+                        countMatPattern = "TMA2_biomedx_MAR_6K_exprMat_file.csv",
+                        metaDataPattern = "TMA2_biomedx_MAR_6K_metadata_file.csv",
                         coordNames = c("CenterX_global_px", "CenterY_global_px")
 )
 
@@ -50,20 +51,20 @@ fov_df = data.frame(fov = colData(cos_spe)$fov)
 
 group_assignment <- fov_df %>%
   mutate(group = case_when(
-    fov >= 1 & fov <= 11 ~ "Remission",
-    fov >= 12 & fov <= 35 ~ "anti-TNF-IR",
-    fov >= 36 & fov <= 69 ~ "Tx-naive",
-    fov >= 70 & fov <= 89 ~ "csDMARD-IR"
+    fov >= 1 & fov <= 37 ~ "anti-TNF-IR",
+    fov >= 38 & fov <= 87 ~ "Tx-naive-1",
+    fov >= 88 & fov <= 105 ~ "Tx-naive-2",
+    fov >= 106 & fov <= 162 ~ "csDMARD-IR"
   ))
 
 colData(cos_spe)$group <- group_assignment$group
 
 slice_assignment <- fov_df %>%
   mutate(slice = case_when(
-    fov >= 1 & fov <= 11 ~ "slice_1_TL",
-    fov >= 12 & fov <= 35 ~ "slice_2_TR",
-    fov >= 36 & fov <= 69 ~ "slice_3_BL",
-    fov >= 70 & fov <= 89 ~ "slice_4_BR"
+    fov >= 1 & fov <= 37 ~ "slice_1_TL",
+    fov >= 38 & fov <= 87 ~ "slice_2_TR",
+    fov >= 88 & fov <= 105 ~ "slice_3_BL",
+    fov >= 106 & fov <= 162 ~ "slice_4_BR"
   ))
 
 colData(cos_spe)$slice <- group_assignment$slice
@@ -92,6 +93,16 @@ colData(cos_spe)$complexity <- colData(cos_spe)$total_counts / colData(cos_spe)$
 # Identify cells with extreme area values (outliers)
 colData(cos_spe)$outlier <- colData(cos_spe)$Area > quantile(colData(cos_spe)$Area, 0.99) | 
   colData(cos_spe)$Area < quantile(colData(cos_spe)$Area, 0.01)
+
+# Calculate mitochondrial gene counts per cell
+colData(cos_spe)$mito_counts <- colSums(assay(cos_spe)[grepl("^MT_", rownames(cos_spe)), ])
+
+# Calculate the fraction of mitochondrial gene counts per cell
+colData(cos_spe)$mito_fraction <- colData(cos_spe)$mito_counts / colData(cos_spe)$total_counts
+
+# Identify cells with high mitochondrial fraction (outliers)
+colData(cos_spe)$high_mito <- isOutlier(colData(cos_spe)$mito_fraction, nmads=3, type="higher")
+
 ```
 
 ## Filter cells according to QC and add to metadata
@@ -102,7 +113,8 @@ high_quality_cells <- (
   colData(cos_spe)$total_counts >= 50 &  # Minimum counts per cell
     colData(cos_spe)$negative_fraction <= 0.1 &  # Negative probe fraction
     colData(cos_spe)$complexity > 1 &  # Complexity threshold
-    colData(cos_spe)$outlier == FALSE # Exclude area outliers
+    colData(cos_spe)$outlier == FALSE & # Exclude area outliers
+    colData(cos_spe)$high_mito == FALSE # Exclude mitochondrial outliers
 )
 
 colData(cos_spe)$to_keep <- high_quality_cells
