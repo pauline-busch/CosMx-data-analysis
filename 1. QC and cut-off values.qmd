@@ -29,17 +29,19 @@ library(ggpubr)
 
 ```
 
-## Read in data
+## Read in data and remove `SystemControlX` from Genes
 
 ```{r, warning=FALSE, message=FALSE}
 
 cos_path <- "C:/CosMx/Datasets/6k/TMA2" # Adjust file path if necessary
 
 cos_spe <- readCosmxSXE(dirName = cos_path,
-                        countMatPattern = "TMA2_biomedx_MAR_6K_exprMat_file.csv",
+                        countMatPattern = "TMA2_biomedx_MAR_6K_mito_exprMat_file.csv",
                         metaDataPattern = "TMA2_biomedx_MAR_6K_metadata_file.csv",
                         coordNames = c("CenterX_global_px", "CenterY_global_px")
 )
+
+cos_spe <- cos_spe[!grepl("^SystemControl", rownames(cos_spe)), ]
 
 ```
 
@@ -243,6 +245,26 @@ complexity_plot <-
 
 ```
 
+```{r}
+
+complexity_plot_mito <- 
+  ggplot(colData(cos_spe), aes(x = total_counts, y = detected_genes, color = high_mito)) +
+  geom_point(alpha = 0.5) +
+  scale_color_manual(values = c("blue", "red")) +
+  
+  labs(title = "Complexity", 
+       x = "Total counts", 
+       y = "Detected genes") +
+  
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_density_2d(color = "black", alpha = 0.5) +
+
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"))
+
+```
+
 ### Save figures to TMA folder
 
 ```{r, warning=FALSE, message=FALSE}
@@ -287,8 +309,8 @@ ggsave("Negative fraction per cell.tiff",
 
 ```{r, warning=FALSE, message=FALSE}
 
-Figure4 <- ggarrange(complexity_plot,
-                     labels = "F")
+Figure4 <- ggarrange(complexity_plot, complexity_plot_mito,
+                     labels = c("F", "G"))
 
 Figure4
 
@@ -312,14 +334,14 @@ ggsave("Summary.pdf",
 ```
 
 
-## Subset the `SpatialExperiment` object to retain high-quality cells and remove remove `SystemControlX` and `NegativeX`
+## Subset the `SpatialExperiment` object to retain high-quality cells and remove `NegativeX`
 
 ```{r, warning=FALSE, message=FALSE}
 
 cos_spe_filtered <- cos_spe[, high_quality_cells]
 
 cos_spe_final <- cos_spe_filtered[
-  !grepl("^(Negative|SystemControl)", rownames(cos_spe_filtered)),
+  !grepl("^Negative", rownames(cos_spe_filtered)),
   ]
 
 # Save the final SpatialExperiment objects for further use
