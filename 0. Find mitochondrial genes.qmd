@@ -68,6 +68,6 @@ Seems like this worked! :)
 Save the version of the gene expression matrix that has mitochondrial genes marked with "MT_" in front of the gene name to later access this information.
 
 ```{r}
-write.csv(gene_matrix_mito, file.path(cos_path, "TMA2_biomedx_MAR_6K_mito_exprMat_file.csv"))
+write.csv(gene_matrix_mito, file.path(cos_path, "TMA2_biomedx_MAR_6K_mito_exprMat_file.csv"), row.names = FALSE)
 ```
 

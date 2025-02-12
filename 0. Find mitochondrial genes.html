@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Pauline">
-<meta name="dcterms.date" content="2025-02-11">
+<meta name="dcterms.date" content="2025-02-12">
 
 <title>QC and cut-off values</title>
 <style>
@@ -3114,7 +3114,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 11, 2025</p>
+      <p class="date">February 12, 2025</p>
     </div>
   </div>
   
@@ -3150,8 +3150,8 @@ vertical-align: -.125em;
 <section id="get-the-gene-expression-matrix-from-cosmx-data-and-annotate-mitochondrial-genes" class="level2">
 <h2 class="anchored" data-anchor-id="get-the-gene-expression-matrix-from-cosmx-data-and-annotate-mitochondrial-genes">Get the gene expression matrix from CosMx data and annotate mitochondrial genes</h2>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>cos_path <span class="ot">&lt;-</span> <span class="st">&quot;C:/CosMx/Datasets/6k/TMA1&quot;</span> <span class="co"># Adjust file path if necessary</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>gene_matrix <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(<span class="fu">file.path</span>(cos_path, <span class="st">&quot;TMA1_biomedx_MAR_6K_exprMat_file.csv&quot;</span>))</span>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>cos_path <span class="ot">&lt;-</span> <span class="st">&quot;C:/CosMx/Datasets/6k/TMA2&quot;</span> <span class="co"># Adjust file path if necessary</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>gene_matrix <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(<span class="fu">file.path</span>(cos_path, <span class="st">&quot;TMA2_biomedx_MAR_6K_exprMat_file.csv&quot;</span>))</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>gene_matrix_mito <span class="ot">&lt;-</span> gene_matrix <span class="sc">%&gt;%</span></span>
 <span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename_with</span>(<span class="sc">~</span> <span class="fu">paste0</span>(<span class="st">&quot;MT_&quot;</span>, .), <span class="at">.cols =</span> <span class="fu">which</span>(<span class="fu">colnames</span>(gene_matrix) <span class="sc">%in%</span> human6k_mitochondrial))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -3189,7 +3189,7 @@ vertical-align: -.125em;
 <h2 class="anchored" data-anchor-id="save-gene-expression-matrix">Save gene expression matrix</h2>
 <p>Save the version of the gene expression matrix that has mitochondrial genes marked with “MT_” in front of the gene name to later access this information.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">write.csv</span>(gene_matrix_mito, <span class="fu">file.path</span>(cos_path, <span class="st">&quot;TMA1_biomedx_MAR_6K_mito_exprMat_file.csv&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">write.csv</span>(gene_matrix_mito, <span class="fu">file.path</span>(cos_path, <span class="st">&quot;TMA2_biomedx_MAR_6K_mito_exprMat_file.csv&quot;</span>), <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 
