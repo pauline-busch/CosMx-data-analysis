@@ -32,7 +32,7 @@ library(ggpubr)
 
 ```{r, warning=FALSE, message=FALSE}
 
-cos_path <- "C:/CosMx/Datasets/6k/TMA1"
+cos_path <- "C:/CosMx/Datasets/6k/TMA2"
 
 # Get the last version of the SpatialExperiment object
 cos_spe_final <- readRDS(file.path(cos_path, "rds files/cos_spe_final.rds"))
@@ -72,7 +72,7 @@ cos_seurat <- FindVariableFeatures(cos_seurat)
 cos_seurat <- ScaleData(cos_seurat)
 
 # Run PCA
-cos_seurat <- RunPCA(cos_seurat, npcs = 30)
+cos_seurat <- RunPCA(cos_seurat, npcs = 20)
 
 ```
 
@@ -81,57 +81,29 @@ cos_seurat <- RunPCA(cos_seurat, npcs = 30)
 ```{r, warning=FALSE, message=FALSE}
 
 # Run UMAP and cluster analysis
-cos_seurat_pre <- RunUMAP(cos_seurat, dims = 1:30)
-cos_seurat_pre <- FindNeighbors(cos_seurat_pre, dims = 1:30)
+cos_seurat <- RunUMAP(cos_seurat, dims = 1:20)
+cos_seurat <- FindNeighbors(cos_seurat, dims = 1:20)
 
 # Adjust resolution to achieve ~n_clusters
-cos_seurat_pre <- FindClusters(cos_seurat_pre, resolution = 0.4) 
+cos_seurat <- FindClusters(cos_seurat, resolution = 0.4) 
 
 # Plot UMAP and clusters
-UMAP_pre <- DimPlot(cos_seurat_pre, reduction = "umap", label = TRUE)
+UMAP_pre <- DimPlot(cos_seurat, reduction = "umap", label = TRUE)
 
 # Save the Seurat object for further use
-saveRDS(cos_seurat_pre, file.path(cos_path, "rds files/cos_seurat_pre.rds"))
+# saveRDS(cos_seurat, file.path(cos_path, "rds files/cos_seurat_pre.rds"))
 
 # Plot clusters with spatial context
-spatial_clusters_pre <- DimPlot(cos_seurat_pre, reduction = "spatial", label = FALSE)
+spatial_clusters <- DimPlot(cos_seurat, reduction = "spatial", label = FALSE)
 
-umap_patient_pre <- DimPlot(cos_seurat_pre, reduction = "umap", group.by = "group")
+umap_patient <- DimPlot(cos_seurat, reduction = "umap", group.by = "group", label = FALSE)
 
 ```
 
-## UMAP with Harmony integrated into Seurat workflow
-
-```{r, warning=FALSE, message=FALSE}
-
-# Run Harmony to integrate across patients
-cos_seurat_post <- RunHarmony(cos_seurat, group.by.vars = "group", dims.use = 1:30)
-
-# Run UMAP again on Harmony-corrected PCA
-cos_seurat_post <- RunUMAP(cos_seurat_post, reduction = "harmony", dims = 1:30)
-cos_seurat_post <- FindNeighbors(cos_seurat_post, reduction = "harmony", dims = 1:30)
-cos_seurat_post <- FindClusters(cos_seurat_post, resolution = 0.4)
-
-# UMAP plots after batch correction
-UMAP_post <- DimPlot(cos_seurat_post, reduction = "umap", label = TRUE)
-
-# Save the Seurat object for further use
-saveRDS(cos_seurat_post, file.path(cos_path, "rds files/cos_seurat_post.rds"))
-
-# Plot clusters with spatial context
-spatial_clusters_post <- DimPlot(cos_seurat_post, reduction = "spatial", label = FALSE)
-
-umap_patient_post <- DimPlot(cos_seurat_post, reduction = "umap", group.by = "group")
-
+```{r}
+sessionInfo()
 ```
 
-## Summary
-
-```{r, warning=FALSE, message=FALSE}
-
-ggsave("Total transcript counts per cell.tiff",
-       path = file.path(cos_path, "QC"),
-       compression = 'lzw')
 
 # Compare UMAPs before and after Harmony
 UMAP_clusters <- annotate_figure(
@@ -141,11 +113,19 @@ UMAP_clusters <- annotate_figure(
   top = "UMAP clusters before and after batch correction")
 
 
+ggsave("UMAP_comparison.tiff",
+       path = file.path(cos_path, "Clusters"),
+       compression = 'lzw')
+
 patient_clusters <- annotate_figure(
   ggarrange(umap_patient_pre, umap_patient_post, 
             labels = c("A", "B"), 
             ncol = 2, nrow = 1),
   top = "Patient clusters before and after batch correction")
+
+ggsave("UMAP_patient_comparison.tiff",
+       path = file.path(cos_path, "Clusters"),
+       compression = 'lzw')
 
 spatial <- annotate_figure(
   ggarrange(spatial_clusters_pre, spatial_clusters_post, 
@@ -153,12 +133,6 @@ spatial <- annotate_figure(
             ncol = 2, nrow = 1),
   top = "Clusters spatial distribution before and after batch correction")
 
-UMAP_clusters
-patient_clusters
-spatial
-
-```
-
-```{r}
-sessionInfo()
-```
+ggsave("UMAP_spatial_comparison.tiff",
+       path = file.path(cos_path, "Clusters"),
+       compression = 'lzw')

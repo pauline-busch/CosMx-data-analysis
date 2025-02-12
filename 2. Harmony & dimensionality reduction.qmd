@@ -1,0 +1,178 @@
+---
+title: "CosMx data analysis"
+author: "Pauline"
+date: today
+format: 
+    html:
+        self-contained: true
+        toc: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+## Load packages
+
+```{r, warning=FALSE, message=FALSE}
+
+library(SpatialExperiment)
+library(SpatialExperimentIO)
+library(SingleCellExperiment)
+library(Seurat)
+library(harmony)
+library(InSituType)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+
+```
+
+## Create `SeuratObject` from `SpatialExperiment`
+
+```{r, warning=FALSE, message=FALSE}
+
+cos_path <- "C:/CosMx/Datasets/6k/TMA2"
+
+# Get the last version of the SpatialExperiment object
+cos_spe_final <- readRDS(file.path(cos_path, "rds files/cos_spe_final.rds"))
+
+counts <- assay(cos_spe_final, "counts") # Expression matrix
+meta_data <- as.data.frame(colData(cos_spe_final)) # Metadata
+spatial_coords <- as.data.frame(spatialCoords(cos_spe_final)) # Spatial coordinates
+
+colnames(spatial_coords) <- c("spatial_1", "spatial_2")
+
+# Build the SeuratObject
+cos_seurat <- CreateSeuratObject(
+  counts = counts,     
+  meta.data = meta_data    
+)
+
+# Adding spatial info to the SeuratObject
+cos_seurat[["spatial"]] <- CreateDimReducObject(
+  embeddings = as.matrix(spatial_coords),
+  key = "spatial_",
+  assay = "RNA"
+)
+
+```
+
+## Data processing and PCA
+
+```{r, warning=FALSE, message=FALSE}
+
+# Normalize the data
+cos_seurat <- NormalizeData(cos_seurat)
+
+# Identify variable features
+cos_seurat <- FindVariableFeatures(cos_seurat)
+
+# Scale data
+cos_seurat <- ScaleData(cos_seurat)
+
+# Run PCA
+cos_seurat <- RunPCA(cos_seurat, npcs = 30)
+
+```
+
+## UMAP with Harmony integrated into Seurat workflow
+
+```{r, warning=FALSE, message=FALSE}
+
+# Run Harmony to integrate across patients
+cos_seurat_harmony <- RunHarmony(cos_seurat, group.by.vars = "group", dims.use = 1:30)
+
+# Run UMAP again on Harmony-corrected PCA
+cos_seurat_harmony <- RunUMAP(cos_seurat_harmony, reduction = "harmony", dims = 1:30)
+cos_seurat_harmony <- FindNeighbors(cos_seurat_harmony, reduction = "harmony", dims = 1:30)
+cos_seurat_harmony <- FindClusters(cos_seurat_harmony, resolution = 0.4)
+
+```
+
+### Prepare plots
+
+```{r}
+
+# UMAP plots after batch correction
+UMAP <- DimPlot(cos_seurat_harmony, 
+                     reduction = "umap", 
+                     label = TRUE)
+
+# Plot clusters with spatial context
+spatial_clusters <- DimPlot(cos_seurat_harmony, 
+                            reduction = "spatial", 
+                            label = FALSE)
+
+UMAP_patient <- DimPlot(cos_seurat_harmony, 
+                        reduction = "umap", 
+                        group.by = "group", 
+                        label = FALSE) +
+  
+  labs(title = NULL) +
+  NoLegend()
+
+# Prepare plot to show relative proportion of patient group per cluster
+cluster_proportions <- cos_seurat_harmony@meta.data %>%  
+  select(seurat_clusters, group) %>%
+  group_by(seurat_clusters, group) %>% 
+  summarise(Freq = n()) %>% 
+  group_by(seurat_clusters) %>% 
+  mutate(proportion = Freq / sum(Freq)) %>% 
+  ungroup()
+
+cluster_count_plot <- ggplot(cos_seurat_harmony@meta.data, aes(seurat_clusters)) +
+  geom_bar() +
+  labs(x = NULL, y = "Cell count") +
+  theme_minimal()
+  
+cluster_prop_plot <- 
+  ggplot(cluster_proportions, aes(seurat_clusters, proportion, fill = factor(group))) +
+  geom_bar(stat = "identity") +
+  scale_fill_discrete(name = "Patient group") +
+  labs(x = "#Cluster", y = "Relative proportion") +
+  theme_minimal() +
+  theme(legend.position = "right")
+  
+relative_clusters <- ggarrange(cluster_count_plot, cluster_prop_plot,
+                               ncol = 1, nrow = 2, align = "v", 
+                               heights = c(1, 2))
+
+```
+
+```{r}
+
+Figure1 <- ggarrange(UMAP, labels = "A")
+Figure1
+
+Figure2 <- ggarrange(spatial_clusters, labels = "B")
+Figure2
+
+Figure3 <- ggarrange(UMAP_patient, relative_clusters,
+                     labels = c("C", "D"))
+Figure3
+
+```
+
+
+## Summary and save .rds
+
+```{r, warning=FALSE, message=FALSE}
+
+Report <- ggarrange(Figure1, Figure2, Figure3,
+                    ncol = 1, nrow = 3) 
+
+ggsave("Summary.pdf",
+       path = file.path(cos_path, "Clusters"),
+       units = "mm", 
+       width = 210,
+       height = 297)
+
+# Save the Seurat object for further use
+saveRDS(cos_seurat_harmony, file.path(cos_path, "rds files/cos_seurat_harmony.rds"))
+
+```
+
+```{r}
+sessionInfo()
+```
