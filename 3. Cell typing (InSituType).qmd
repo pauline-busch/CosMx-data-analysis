@@ -34,10 +34,10 @@ library(patchwork)
 
 ```{r, warning=FALSE, message=FALSE}
 
-cos_path <- "C:/CosMx/Datasets/6k/TMA1"
+cos_path <- "C:/CosMx/Datasets/6k/TMA2"
 
 # Get the last version of the Seurat object
-cos_seurat_post <- readRDS(file.path(cos_path, "rds files/cos_seurat_post.rds"))
+cos_seurat_post <- readRDS(file.path(cos_path, "rds files/cos_seurat_harmony.rds"))
 
 cluster_markers <- FindAllMarkers(cos_seurat_post, only.pos = TRUE)
 
@@ -59,7 +59,10 @@ cos_spe_filtered <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_filtere
 neg_probes_present <- grepl("^Negative", rownames(cos_spe_filtered))
 
 # Compute mean negative control counts per cell
-negmean <- as.matrix(colMeans(assay(cos_spe_filtered)[neg_probes_present, ]))
+negmean <- assay(cos_spe_filtered)[neg_probes_present, ] %>% 
+  as.matrix() %>% 
+  t() %>% 
+  rowMeans()
 
 ```
 
@@ -80,36 +83,52 @@ table(cohort)
 ```{r, warning=FALSE, message=FALSE}
 
 # Get the filtered SpatialExperiment object
-cos_spe_final <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_final.rds")
+#cos_spe_final <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_final.rds")
 
-counts_celltyping <- assay(cos_spe_final, "counts") %>% t()
+counts_celltyping <- t(counts)
 
-data("ioprofiles")
+ref_matrix <- as.matrix(read.csv("./Info/reference_matrix.csv", row.names = 1))
 
-unsup_clusters <- insitutype(
+sup_clusters <- insitutypeML(
   x = counts_celltyping,
   neg = negmean,
   #assay_type = "RNA",
-  reference_profiles = ioprofiles,
-  update_reference_profiles = TRUE,
-  cohort = cohort,
+  reference_profiles = ref_matrix,
+  #update_reference_profiles = FALSE,
+  cohort = cohort
   # Enter your own per-cell background estimates here if you have them;
   # otherwise insitutype will use the negprobes to estimate background for you.
-  bg = NULL,
+  #bg = NULL,
   # condensed to save time. n_clusts = 5:20 would be more optimal
-  n_clusts = 10:20,
+  #n_clusts = 10:20,
   # NULL value runs unsupervised clustering; entering a matrix here would run
   # semi-supervised clustering.
-  n_phase1 = 200,
-  n_phase2 = 500,
-  n_phase3 = 2000,
-  n_starts = 1,
-  max_iters = 5
+  #n_phase1 = 200,
+  #n_phase2 = 500,
+  #n_phase3 = 2000,
+  #n_starts = 1,
+  #max_iters = 5
 )
 
-str(unsup_clusters)
+str(sup_clusters)
 
 ```
+
+```{r}
+
+cos_seurat_post$InSituTypeID <- sup_clusters$clust
+
+heatmap(sweep(sup_clusters$profiles, 1,
+              pmax(apply(sup_clusters$profiles, 1, max), 0.2), "/"),
+        scale = "none",
+        main = "Mean cell expression by phenotype",
+        margins = c(10, 5))
+
+DimPlot(cos_seurat_post, group.by = "InSituTypeID", reduction = "umap") +
+  facet_wrap(vars(InSituTypeID), nrow = 5, ncol = 3)
+
+```
+
 
 ```{r, warning=FALSE, message=FALSE}
 
@@ -124,8 +143,6 @@ IST_heatmap <- heatmap(
 ```{r, warning=FALSE, message=FALSE}
 
 cols <- c(
-  "#b42380", "#7dfc00", "#0ec434", "#228c68", "#8ad8e8", "#c3a5b4", "#946aa2",
-  "#235b54", "#29bdab", "#3998f5", "#37294f", "#277da7", "#3750db", "#f22020",
   "#991919", "#ffcba5", "#e68f66", "#c56133", "#96341c", "#632819", "#ffc413",
   "#f47a22", "#2f2aa0", "#b732cc", "#772b9d", "#f07cab", "#d30b94", "#edeff3", 
   "#5d4c86"
@@ -135,7 +152,7 @@ cols <- cols[seq_along(unique(unsup_clusters$clust))]
 names(cols) <- unique(unsup_clusters$clust)
 
 umap_df <- as.data.frame(Embeddings(cos_seurat_post, "umap"))
-umap_df$cluster <- factor(unsup_clusters$clust)
+umap_df$cluster <- factor(unsup_clusters$cluster)
 
 umap_plot <- ggplot(umap_df, aes(x = umap_1, y = umap_2, color = cluster)) +
   geom_point(alpha = 0.8, size = 1.5) +

@@ -1,0 +1,157 @@
+---
+title: "QC and cut-off values"
+author: "Pauline"
+date: today
+format: 
+    html:
+        self-contained: true
+        toc: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+## Load packages etc.
+
+```{r, warning=FALSE, message=FALSE}
+
+library(dplyr)
+library(tidyr)
+library(scater)
+library(scuttle)
+library(ggplot2)
+library(ggridges)
+library(patchwork)
+library(DropletUtils)
+library(BiocParallel)
+library(SingleCellExperiment)
+library(readxl)
+
+bp <- SnowParam(10)
+set.seed(250112)
+
+```
+
+## Get the processed CITE-seq data
+
+```{r, warning=FALSE, message=FALSE}
+
+lys <- readRDS("C:/CosMx/Synovial data/sce-lv2.rds") #.rds from Helena
+cosmx_panel <- read_xlsx("./Info/Human_6k_Gene_List.xlsx", sheet = 2) %>% 
+  as.data.frame()
+
+```
+
+## Annotation (from ./Info/Helenas analysis/04-viz.html)
+
+```{r, warning=FALSE, message=FALSE}
+
+lab <- list(
+  imm=c(a="T/NK cell", b="B cell"),
+  mye=c(a="mac1", b="mac2", c="mac3", e="mac4", 
+        d="nphil", f="nphil"),
+  str=c(
+    a="fib1", b="fib2", d="fib3", 
+    c="endo1", g="endo2", h="endo3", 
+    e="blood", f="mural/peri"))
+
+for (sub in names(lab)) {
+  idx <- match(lys[[sub]]$kid_lv2, names(lab[[sub]]))
+  lys[[sub]]$lab <- lab[[sub]][idx]
+}
+lys <- lapply(lys, \(.) { rowData(.)$sel <- NULL; .})
+
+
+```
+
+## Update the HDF5-backed assays
+Took me very long to fix this. File path needs to be updated as "lys" contains the file path from Helena.
+I just copied the location of the wrong paths manually from viewing "lys" in RStudio.
+
+```{r, warning=FALSE, message=FALSE}
+
+new_h5_path <- "C:/CosMx/Synovial data/sce-raw/assays.h5"  
+
+for (sub in names(lys)) {
+  for (assay_name in assayNames(lys[[sub]])) {
+    lys[[sub]]@assays@data@listData[["counts"]]@
+      seed@seed@seed@filepath = new_h5_path
+    lys[[sub]]@assays@data@listData[["logcounts"]]@
+      seed@seed@seed@seed@seed@seed@seed@filepath = new_h5_path
+  }
+}
+
+```
+
+## Merge the three objects of ´SingleCellExperiment´ to one
+
+```{r, warning=FALSE, message=FALSE}
+
+sce <- do.call(cbind, lys)
+sce <- sce[, !is.na(sce$lab)]
+
+```
+
+## Generate reference matrix
+
+```{r, warning=FALSE, message=FALSE}
+
+ref_matrix <- aggregateAcrossCells(
+  sce, ids = sce$lab, 
+  statistics = "mean", use.assay.type = "counts"
+)
+
+ref_df <- as.data.frame(assay(ref_matrix))
+ref_df_filtered <- ref_df[row.names(ref_df) %in% cosmx_panel$`Display Name`,]
+
+```
+
+## Marker genes (from ./Info/Helenas analysis/04-viz.html)
+
+```{r}
+
+gs <- list(
+    "blood" = c("HBB", "HBA1"),
+    "B cell" = c("IGHM", "IGHD", "CD37", "CD79A", "MS4A1", "BANK1"),
+    "T/NK cell" = c("CD2", "CD3D", "CD3E", "IL32", "IL7R"),
+    "mural/peri" = c("ACTA2", "MYH11", "TAGLN","COL18A1", "NOTCH3"),
+    "endo1" = c("POSTN", "ACKR1", "COL15A1", "PECAM1"),
+    "endo2" = c("LYVE1", "PROX1", "TFF3", "TFPI", "CCL21"),
+    "endo3" = c("VWF", "EMCN", "ERG", "TM4SF1", "NRP1", "FLT1"),
+    "fib1" = c("THY1", "CXCL12", "MMP2", "SLIT2"),
+    "fib2" = c("ITGB8", "ITGBL1", "HTRA1", "FN1", "PRG4"),
+    "fib3" = c(
+        "DPP4", "ITGA11", "ACKR3", "DCN", "PCOLCE2", "AGTR1", 
+        "EGFR", "MYOC", "FBLN2", "FBN1", "NOVA1", "MFAP5", 
+        "IGFBP6", "TNXB", "FNDC1", "ASPN", "PDGFRL", "COL1A2"
+    ),
+    "mac1" = c(
+        "SRGN", "CD68", "ITGAM", "FCGR1A", "APOE", 
+        "C1QA", "C1QB", "C1QC", "CD14", "CD163", "MRC1", "MS4A7", 
+        "CTSB", "GPR34", "SELENOP", "MERTK", "FOLR2", "SLC40A1"
+    ),
+    "mac2" = c("SPP1", "TIMD4", "TREM2", "CTSD", "CTSL", "MARCO", "FBP1", "S100A6"),
+    "mac3" = c("EREG", "CLEC10A", "CD1C", "CCR2", "BTG1"),
+    "mac4" = c("FCN1", "LYZ", "MPEG1", "IL1B", "SLC11A1"),
+    "nphil" = c("S100A8", "S100A9", "S100A12", "NAMPT", "CXCR1", "IFITM2", "G0S2")
+)
+
+marker_df <- stack(gs)
+colnames(marker_df) <- c("Gene", "Cell_Type")
+
+```
+
+
+## Save reference matrix and marker genes for later use
+
+```{r, warning=FALSE, message=FALSE}
+
+write.csv(ref_df_filtered, "./Info/reference_matrix.csv")
+write.csv(marker_df, "./Info/marker_genes.csv")
+
+```
+
+```{r}
+sessionInfo()
+```
+

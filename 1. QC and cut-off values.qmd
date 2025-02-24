@@ -96,15 +96,6 @@ colData(cos_spe)$complexity <- colData(cos_spe)$total_counts / colData(cos_spe)$
 colData(cos_spe)$outlier <- colData(cos_spe)$Area > quantile(colData(cos_spe)$Area, 0.99) | 
   colData(cos_spe)$Area < quantile(colData(cos_spe)$Area, 0.01)
 
-# Calculate mitochondrial gene counts per cell
-colData(cos_spe)$mito_counts <- colSums(assay(cos_spe)[grepl("^MT_", rownames(cos_spe)), ])
-
-# Calculate the fraction of mitochondrial gene counts per cell
-colData(cos_spe)$mito_fraction <- colData(cos_spe)$mito_counts / colData(cos_spe)$total_counts
-
-# Identify cells with high mitochondrial fraction (outliers)
-colData(cos_spe)$high_mito <- isOutlier(colData(cos_spe)$mito_fraction, nmads=3, type="higher")
-
 ```
 
 ## Filter cells according to QC and add to metadata
@@ -115,8 +106,7 @@ high_quality_cells <- (
   colData(cos_spe)$total_counts >= 50 &  # Minimum counts per cell
     colData(cos_spe)$negative_fraction <= 0.1 &  # Negative probe fraction
     colData(cos_spe)$complexity > 1 &  # Complexity threshold
-    colData(cos_spe)$outlier == FALSE & # Exclude area outliers
-    colData(cos_spe)$high_mito == FALSE # Exclude mitochondrial outliers
+    colData(cos_spe)$outlier == FALSE # Exclude area outliers
 )
 
 colData(cos_spe)$to_keep <- high_quality_cells
@@ -245,26 +235,6 @@ complexity_plot <-
 
 ```
 
-```{r}
-
-complexity_plot_mito <- 
-  ggplot(colData(cos_spe), aes(x = total_counts, y = detected_genes, color = high_mito)) +
-  geom_point(alpha = 0.5) +
-  scale_color_manual(values = c("blue", "red")) +
-  
-  labs(title = "Complexity", 
-       x = "Total counts", 
-       y = "Detected genes") +
-  
-  scale_x_log10() +
-  scale_y_log10() +
-  geom_density_2d(color = "black", alpha = 0.5) +
-
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold"))
-
-```
-
 ### Save figures to TMA folder
 
 ```{r, warning=FALSE, message=FALSE}
@@ -309,8 +279,8 @@ ggsave("Negative fraction per cell.tiff",
 
 ```{r, warning=FALSE, message=FALSE}
 
-Figure4 <- ggarrange(complexity_plot, complexity_plot_mito,
-                     labels = c("F", "G"))
+Figure4 <- ggarrange(complexity_plot,
+                     labels = "F")
 
 Figure4
 
