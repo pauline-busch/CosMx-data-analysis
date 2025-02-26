@@ -59,10 +59,12 @@ cos_spe_filtered <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_filtere
 neg_probes_present <- grepl("^Negative", rownames(cos_spe_filtered))
 
 # Compute mean negative control counts per cell
-negmean <- assay(cos_spe_filtered)[neg_probes_present, ] %>% 
-  as.matrix() %>% 
-  t() %>% 
-  rowMeans()
+# negmean <- assay(cos_spe_filtered)[neg_probes_present, ] %>% 
+#   as.matrix() %>% 
+#   t() %>% 
+#   rowMeans()
+
+negmean <- colData(cos_spe_filtered)$nCount_negprobes / 20 
 
 ```
 

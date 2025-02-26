@@ -35,12 +35,11 @@ library(ggpubr)
 cos_path <- "C:/CosMx/Datasets/6k/TMA2"
 
 # Get the last version of the SpatialExperiment object
-cos_spe_final <- readRDS(file.path(cos_path, "rds files/cos_spe_final.rds"))
+cos_spe <- readRDS(file.path(cos_path, "rds files/cos_spe_filtered.rds"))
 
-counts <- assay(cos_spe_final, "counts") # Expression matrix
-meta_data <- as.data.frame(colData(cos_spe_final)) # Metadata
-spatial_coords <- as.data.frame(spatialCoords(cos_spe_final)) # Spatial coordinates
-
+counts <- assay(cos_spe, "counts") # Expression matrix
+meta_data <- as.data.frame(colData(cos_spe)) # Metadata
+spatial_coords <- as.data.frame(spatialCoords(cos_spe)) # Spatial coordinates
 colnames(spatial_coords) <- c("spatial_1", "spatial_2")
 
 # Build the SeuratObject

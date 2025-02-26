@@ -12,7 +12,6 @@ editor_options:
 ---
 
 ## Load packages
-
 ```{r, warning=FALSE, message=FALSE}
 
 library(SpatialExperiment)
@@ -26,27 +25,27 @@ library(dplyr)
 library(ggplot2)
 library(ggthemes)
 library(ggpubr)
+library(ggExtra)
 
 ```
 
-## Read in data and remove `SystemControlX` from Genes
-
+## Read in data and remove `SystemControlX` and `NegativeX` from Genes
+It is useful to count how many negative controls are being used, because this number will be used to calculate each cell’s mean negative control value. In this set of experiments there should be 20 negative controls present (to check: *sum(grepl("^Negative", rownames(cos_spe)))*)
 ```{r, warning=FALSE, message=FALSE}
 
 cos_path <- "C:/CosMx/Datasets/6k/TMA2" # Adjust file path if necessary
 
 cos_spe <- readCosmxSXE(dirName = cos_path,
-                        countMatPattern = "TMA2_biomedx_MAR_6K_mito_exprMat_file.csv",
+                        countMatPattern = "TMA2_biomedx_MAR_6K_exprMat_file.csv",
                         metaDataPattern = "TMA2_biomedx_MAR_6K_metadata_file.csv",
                         coordNames = c("CenterX_global_px", "CenterY_global_px")
 )
 
-cos_spe <- cos_spe[!grepl("^SystemControl", rownames(cos_spe)), ]
+cos_spe <- cos_spe[!grepl("^(Negative|SystemControl)", rownames(cos_spe)), ]
 
 ```
 
 ## Assign patient groups
-
 ```{r, warning=FALSE, message=FALSE}
 
 fov_df = data.frame(fov = colData(cos_spe)$fov)
@@ -74,39 +73,45 @@ colData(cos_spe)$slice <- group_assignment$slice
 ```
 
 ## Preparation for QC (add metrics)
-
 ```{r, warning=FALSE, message=FALSE}
 
-# Calculate total RNA counts per cell
-colData(cos_spe)$total_counts <- colSums(assay(cos_spe))
-
-# Calculate the number of genes detected per cell
-colData(cos_spe)$detected_genes <- colSums(assay(cos_spe) > 0)
-
-# Calculate the number of negative control counts per cell
-colData(cos_spe)$negative_counts <- colSums(assay(cos_spe)[grepl("Negative", rownames(cos_spe)), ])
-
 # Calculate the fraction of negative control counts per cell
-colData(cos_spe)$negative_fraction <- colData(cos_spe)$negative_counts / colData(cos_spe)$total_counts
+colData(cos_spe)$Neg_fraction <- 
+  colData(cos_spe)$nCount_negprobes / colData(cos_spe)$nCount_RNA
 
 # Calculate RNA complexity (total counts divided by detected genes)
-colData(cos_spe)$complexity <- colData(cos_spe)$total_counts / colData(cos_spe)$detected_genes
+colData(cos_spe)$Complexity <- 
+  colData(cos_spe)$nCount_RNA / colData(cos_spe)$nFeature_RNA
 
 # Identify cells with extreme area values (outliers)
-colData(cos_spe)$outlier <- colData(cos_spe)$Area > quantile(colData(cos_spe)$Area, 0.99) | 
-  colData(cos_spe)$Area < quantile(colData(cos_spe)$Area, 0.01)
 
+grubbs.flag <- function(numbers,p) {
+  outliers <- NULL
+  test <- numbers
+  grubbs.result <- grubbs.test(test)
+  pv <- grubbs.result$p.value
+
+  while(pv < p) {
+    outliers <- c(outliers,as.numeric(strsplit(grubbs.result$alternative," ")[[1]][3]))
+    test <- numbers[!numbers %in% outliers]
+    grubbs.result <- grubbs.test(test)
+    pv <- grubbs.result$p.value
+  }
+  return(data.frame(X=numbers,Outlier=(numbers %in% outliers)))
+}
+
+area_outliers <- grubbs.flag(colData(cos_spe)$Area, 0.01)
+colData(cos_spe)$Outlier <- area_outliers$Outlier
 ```
 
 ## Filter cells according to QC and add to metadata
-
 ```{r, warning=FALSE, message=FALSE}
 
 high_quality_cells <- (
-  colData(cos_spe)$total_counts >= 50 &  # Minimum counts per cell
-    colData(cos_spe)$negative_fraction <= 0.1 &  # Negative probe fraction
-    colData(cos_spe)$complexity > 1 &  # Complexity threshold
-    colData(cos_spe)$outlier == FALSE # Exclude area outliers
+  colData(cos_spe)$nCount_RNA >= 50 &  # Minimum counts per cell
+    colData(cos_spe)$Neg_fraction <= 0.1 &  # Negative probe fraction
+    colData(cos_spe)$Complexity > 1 &  # Complexity threshold
+    colData(cos_spe)$Outlier == FALSE # Exclude area outliers
 )
 
 colData(cos_spe)$to_keep <- high_quality_cells
@@ -114,19 +119,23 @@ colData(cos_spe)$to_keep <- high_quality_cells
 ```
 
 ## QC exploration plots
-
-### Density plots for key QC metrics
-
 ```{r, warning=FALSE, message=FALSE}
 
-total_count_plot <- 
-  ggplot(colData(cos_spe), aes(x = total_counts)) +
+nCount_RNA_plot <- 
+  ggplot(colData(cos_spe), aes(x = nCount_RNA)) +
   
   # Adjust amount of bins or use geom_density for more or less details
   geom_density(fill = "blue", colour = "blue", alpha = 0.1) +
   
   # Change intercept to check cut-off values (e.g., "50")
   geom_vline(xintercept = 50, color = "red") + 
+  annotate("text", 
+    label="Cutoff: Total counts < 50", 
+    x=120, 
+    y=0.0006, 
+    angle=90, 
+    size=3.5, 
+    color="red") +
   
   xlim(0, 2000) +
   
@@ -143,52 +152,8 @@ total_count_plot <-
 
 ```{r, warning=FALSE, message=FALSE}
 
-gene_density_plot <- 
-  ggplot(colData(cos_spe), aes(x = detected_genes)) +
-  geom_density(fill = "blue", colour = "blue", alpha = 0.1) +
-  xlim(0, 1500) +
-  
-  # Turn on/off to check for individual groups
-  # facet_wrap(vars(group)) +
-  
-  labs(title = "Total gene count per cell (density)",
-       x = "Gene count", 
-       y = NULL) +
-  
-  theme(plot.title = element_text(face = "bold")) 
-
-```
-
-```{r, warning=FALSE, message=FALSE}
-
-negative_fraction_plot <- 
-  ggplot(colData(cos_spe), aes(x = negative_fraction)) +
-  geom_histogram(binwidth = 0.01, fill = "purple", color = "purple", alpha = 0.6) +
-  
-  # Change intercept to check cut-off values (e.g., "50")
-  geom_vline(xintercept = 0.1, linetype = "dashed", color = "red") +
-  
-  # Make bins around the cut-off value visible
-  ylim(0, 1500) +
-  xlim(0.01, 0.25) +
-  
-  # Turn on/off to check for individual groups
-  # facet_wrap(vars(group)) +
-  
-  labs(title = "Negative fraction",
-       x = "Negative count / total transcript count", 
-       y = NULL) +
-  
-  theme(plot.title = element_text(face = "bold"))
-
-```
-
-### Boxplots for different treatment groups
-
-```{r, warning=FALSE, message=FALSE}
-
-total_count_grouped <- 
-  ggplot(colData(cos_spe), aes(x = factor(group), y = total_counts)) +
+nCount_RNA_grouped <- 
+  ggplot(colData(cos_spe), aes(x = factor(group), y = nCount_RNA)) +
   geom_boxplot(fill = "blue", alpha = 0.5) +
   
   labs(title = "Total transcript counts per cell (grouped)", 
@@ -201,24 +166,55 @@ total_count_grouped <-
 
 ```{r, warning=FALSE, message=FALSE}
 
-gene_density_grouped <- 
-  ggplot(colData(cos_spe), aes(x = factor(group), y = detected_genes)) +
-  geom_boxplot(fill = "blue", alpha = 0.5) +
+Neg_fraction_plot <- 
+  ggplot(colData(cos_spe), aes(x = Neg_fraction)) +
+  geom_histogram(binwidth = 0.01, fill = "purple", color = "purple", alpha = 0.6) +
   
-  labs(title = "Total gene count per cell (grouped)", 
-       x = NULL, 
-       y = "Gene count per cell") + 
+  # Change intercept to check cut-off values (e.g., "50")
+  geom_vline(xintercept = 0.1, linetype = "dashed", color = "red") +
+  
+  annotate("text", 
+    label="~0.0006% of cells > 0.01", 
+    x=0.2, 
+    y=40000, 
+    size=4.5, 
+    color="red") +
+  
+  # Turn on/off to check for individual groups
+  # facet_wrap(vars(group)) +
+  
+  labs(title = "Negative fraction",
+       x = "Negative count / total transcript count", 
+       y = NULL) +
   
   theme(plot.title = element_text(face = "bold"))
 
 ```
 
-### Complexity assessment
+```{r, warning=FALSE, message=FALSE}
+
+Outlier_base <- 
+  ggplot(colData(cos_spe), aes(x = nCount_RNA, y = Area.um2, color = Outlier)) +
+  geom_point(alpha = 0.5) +
+  scale_color_manual(values = c("blue", "red")) +
+  
+  labs(title = "Cell areas", 
+       x = "Total count", 
+       y = "Area [µm²]") +
+
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"))
+
+Outlier_plot <- ggMarginal(
+  Outlier_base, type = "densigram", margins = "y"
+  )
+
+```
 
 ```{r, warning=FALSE, message=FALSE}
 
-complexity_plot <- 
-  ggplot(colData(cos_spe), aes(x = total_counts, y = detected_genes, color = to_keep)) +
+Complexity_plot <- 
+  ggplot(colData(cos_spe), aes(x = nCount_RNA, y = nFeature_RNA, color = to_keep)) +
   geom_point(alpha = 0.5) +
   scale_color_manual(values = c("blue", "red")) +
   
@@ -235,11 +231,35 @@ complexity_plot <-
 
 ```
 
-### Save figures to TMA folder
-
 ```{r, warning=FALSE, message=FALSE}
 
-Figure1 <- ggarrange(total_count_plot, total_count_grouped, 
+Spatial_filter <- 
+  ggplot(spatialCoords(cos_spe), aes(
+    x = CenterX_global_px, 
+    y = CenterY_global_px, 
+    color = colData(cos_spe)$to_keep)) +
+  geom_point(size = 0.5) +
+  scale_color_manual(values = c("blue", "red")) +
+  
+  labs(title = "Overview: Which cells are kept?", 
+       x = "X-coordinate", 
+       y = "Y-coordinate",
+       color = "to_keep") +
+  
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"))
+
+ggsave("Spatial_filter.tiff",
+       path = file.path(cos_path, "QC"),
+       compression = 'lzw')
+
+```
+
+
+### Save figures to TMA folder
+```{r, warning=FALSE, message=FALSE}
+
+Figure1 <- ggarrange(nCount_RNA_plot, nCount_RNA_grouped, 
                      labels = c("A", "B"),
                      ncol = 2, nrow = 1) 
 Figure1
@@ -252,13 +272,12 @@ ggsave("Total transcript counts per cell.tiff",
 
 ```{r, warning=FALSE, message=FALSE}
 
-Figure2 <- ggarrange(gene_density_plot, gene_density_grouped, 
-                     labels = c("C", "D"),
-                     ncol = 2, nrow = 1) 
+Figure2 <- ggarrange(Neg_fraction_plot, Complexity_plot,
+                     labels = c("C", "D"))
 
 Figure2
 
-ggsave("Total gene count per cell.tiff",
+ggsave("NegFrac and Complexity.tiff",
        path = file.path(cos_path, "QC"),
        compression = 'lzw')
 
@@ -266,23 +285,10 @@ ggsave("Total gene count per cell.tiff",
 
 ```{r, warning=FALSE, message=FALSE}
 
-Figure3 <- ggarrange(negative_fraction_plot,
+Figure3 <- ggarrange(Outlier_plot,
                      labels = "E")
 
 Figure3
-
-ggsave("Negative fraction per cell.tiff",
-       path = file.path(cos_path, "QC"),
-       compression = 'lzw')
-
-```
-
-```{r, warning=FALSE, message=FALSE}
-
-Figure4 <- ggarrange(complexity_plot,
-                     labels = "F")
-
-Figure4
 
 ggsave("Complexity.tiff",
        path = file.path(cos_path, "QC"),
@@ -292,8 +298,8 @@ ggsave("Complexity.tiff",
 
 ```{r, warning=FALSE, message=FALSE}
 
-Report <- ggarrange(Figure1, Figure2, Figure3, Figure4,
-                    ncol = 1, nrow = 4) 
+Report <- ggarrange(Figure1, Figure2, Figure3, 
+                    ncol = 1, nrow = 3) 
 
 ggsave("Summary.pdf",
        path = file.path(cos_path, "QC"),
@@ -304,19 +310,13 @@ ggsave("Summary.pdf",
 ```
 
 
-## Subset the `SpatialExperiment` object to retain high-quality cells and remove `NegativeX`
-
+## Subset the `SpatialExperiment` object to retain high-quality cells
 ```{r, warning=FALSE, message=FALSE}
 
 cos_spe_filtered <- cos_spe[, high_quality_cells]
 
-cos_spe_final <- cos_spe_filtered[
-  !grepl("^Negative", rownames(cos_spe_filtered)),
-  ]
-
 # Save the final SpatialExperiment objects for further use
 saveRDS(cos_spe_filtered, file.path(cos_path, "rds files/cos_spe_filtered.rds"))
-saveRDS(cos_spe_final, file.path(cos_path, "rds files/cos_spe_final.rds"))
 
 ```
 
