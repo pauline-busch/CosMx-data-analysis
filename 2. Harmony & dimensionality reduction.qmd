@@ -32,7 +32,9 @@ library(ggpubr)
 
 ```{r, warning=FALSE, message=FALSE}
 
-cos_path <- "C:/CosMx/Datasets/6k/TMA2"
+TMAnr <- 2
+
+cos_path <- sprintf("C:/CosMx/Datasets/6k/TMA%s", TMAnr) # Adjust file path if necessary
 
 # Get the last version of the SpatialExperiment object
 cos_spe <- readRDS(file.path(cos_path, "rds files/cos_spe_filtered.rds"))
