@@ -1,5 +1,5 @@
 ---
-title: "QC and cut-off values"
+title: "Reference matrix"
 author: "Pauline"
 date: today
 format: 
@@ -12,7 +12,6 @@ editor_options:
 ---
 
 ## Load packages etc.
-
 ```{r, warning=FALSE, message=FALSE}
 
 library(dplyr)
@@ -33,50 +32,47 @@ set.seed(250112)
 ```
 
 ## Get the processed CITE-seq data
-
 ```{r, warning=FALSE, message=FALSE}
 
-lys <- readRDS("C:/CosMx/Synovial data/sce-lv2.rds") #.rds from Helena
+sce <- readRDS("C:/CosMx/Synovial data/sce-lv2.rds") #.rds from Helena
 cosmx_panel <- read_xlsx("./Info/Human_6k_Gene_List.xlsx", sheet = 2) %>% 
   as.data.frame()
 
 ```
 
-## Annotation (from ./Info/Helenas analysis/04-viz.html)
-
+## Annotation (from ./Info/Helenas anasceis/04-viz.html)
 ```{r, warning=FALSE, message=FALSE}
 
 lab <- list(
   imm=c(a="T/NK cell", b="B cell"),
   mye=c(a="mac1", b="mac2", c="mac3", e="mac4", 
         d="nphil", f="nphil"),
-  str=c(
-    a="fib1", b="fib2", d="fib3", 
-    c="endo1", g="endo2", h="endo3", 
-    e="blood", f="mural/peri"))
+  str=c(a="fib1", b="fib2", d="fib3", 
+        c="endo1", g="endo2", h="endo3", 
+        e="blood", f="mural/peri")
+)
 
 for (sub in names(lab)) {
-  idx <- match(lys[[sub]]$kid_lv2, names(lab[[sub]]))
-  lys[[sub]]$lab <- lab[[sub]][idx]
+  idx <- match(sce[[sub]]$kid_lv2, names(lab[[sub]]))
+  sce[[sub]]$lab <- lab[[sub]][idx]
 }
-lys <- lapply(lys, \(.) { rowData(.)$sel <- NULL; .})
 
+sce <- lapply(sce, \(.) { rowData(.)$sel <- NULL; .})
 
 ```
 
 ## Update the HDF5-backed assays
-Took me very long to fix this. File path needs to be updated as "lys" contains the file path from Helena.
-I just copied the location of the wrong paths manually from viewing "lys" in RStudio.
-
+Took me very long to fix this. File path needs to be updated as "sce" contains the file path from Helena.
+I just copied the location of the wrong paths manually from viewing "sce" in RStudio.
 ```{r, warning=FALSE, message=FALSE}
 
 new_h5_path <- "C:/CosMx/Synovial data/sce-raw/assays.h5"  
 
-for (sub in names(lys)) {
-  for (assay_name in assayNames(lys[[sub]])) {
-    lys[[sub]]@assays@data@listData[["counts"]]@
+for (sub in names(sce)) {
+  for (assay_name in assayNames(sce[[sub]])) {
+    sce[[sub]]@assays@data@listData[["counts"]]@
       seed@seed@seed@filepath = new_h5_path
-    lys[[sub]]@assays@data@listData[["logcounts"]]@
+    sce[[sub]]@assays@data@listData[["logcounts"]]@
       seed@seed@seed@seed@seed@seed@seed@filepath = new_h5_path
   }
 }
@@ -84,20 +80,18 @@ for (sub in names(lys)) {
 ```
 
 ## Merge the three objects of ´SingleCellExperiment´ to one
-
 ```{r, warning=FALSE, message=FALSE}
 
-sce <- do.call(cbind, lys)
-sce <- sce[, !is.na(sce$lab)]
+merged_sce <- do.call(cbind, sce)
+merged_sce <- merged_sce[, !is.na(merged_sce$lab)]
 
 ```
 
 ## Generate reference matrix
-
 ```{r, warning=FALSE, message=FALSE}
 
 ref_matrix <- aggregateAcrossCells(
-  sce, ids = sce$lab, 
+  merged_sce, ids = merged_sce$lab, 
   statistics = "mean", use.assay.type = "counts"
 )
 
@@ -106,8 +100,7 @@ ref_df_filtered <- ref_df[row.names(ref_df) %in% cosmx_panel$`Display Name`,]
 
 ```
 
-## Marker genes (from ./Info/Helenas analysis/04-viz.html)
-
+## Marker genes (from ./Info/Helenas anasceis/04-viz.html)
 ```{r}
 
 gs <- list(
@@ -141,9 +134,7 @@ colnames(marker_df) <- c("Gene", "Cell_Type")
 
 ```
 
-
 ## Save reference matrix and marker genes for later use
-
 ```{r, warning=FALSE, message=FALSE}
 
 write.csv(ref_df_filtered, "./Info/reference_matrix.csv")
@@ -154,4 +145,3 @@ write.csv(marker_df, "./Info/marker_genes.csv")
 ```{r}
 sessionInfo()
 ```
-
