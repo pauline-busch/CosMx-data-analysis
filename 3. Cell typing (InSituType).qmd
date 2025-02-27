@@ -34,7 +34,9 @@ library(patchwork)
 
 ```{r, warning=FALSE, message=FALSE}
 
-cos_path <- "C:/CosMx/Datasets/6k/TMA2"
+TMAnr <- 2
+
+cos_path <- sprintf("C:/CosMx/Datasets/6k/TMA%s", TMAnr) # Adjust file path if necessary
 
 # Get the last version of the Seurat object
 cos_seurat_post <- readRDS(file.path(cos_path, "rds files/cos_seurat_harmony.rds"))
@@ -54,7 +56,7 @@ top_markers <- cluster_markers %>%
 ```{r, warning=FALSE, message=FALSE}
 
 # Get the filtered SpatialExperiment object
-cos_spe_filtered <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_filtered.rds")
+cos_spe_filtered <- readRDS(file.path(cos_path, "/rds files/cos_spe_filtered.rds"))
 
 neg_probes_present <- grepl("^Negative", rownames(cos_spe_filtered))
 
@@ -84,32 +86,15 @@ table(cohort)
 
 ```{r, warning=FALSE, message=FALSE}
 
-# Get the filtered SpatialExperiment object
-#cos_spe_final <- readRDS("C:/CosMx/Datasets/6k/TMA2/rds files/cos_spe_final.rds")
-
-counts_celltyping <- t(counts)
+counts_celltyping <- t(assay(cos_spe_filtered, "counts"))
 
 ref_matrix <- as.matrix(read.csv("./Info/reference_matrix.csv", row.names = 1))
 
 sup_clusters <- insitutypeML(
   x = counts_celltyping,
   neg = negmean,
-  #assay_type = "RNA",
   reference_profiles = ref_matrix,
-  #update_reference_profiles = FALSE,
   cohort = cohort
-  # Enter your own per-cell background estimates here if you have them;
-  # otherwise insitutype will use the negprobes to estimate background for you.
-  #bg = NULL,
-  # condensed to save time. n_clusts = 5:20 would be more optimal
-  #n_clusts = 10:20,
-  # NULL value runs unsupervised clustering; entering a matrix here would run
-  # semi-supervised clustering.
-  #n_phase1 = 200,
-  #n_phase2 = 500,
-  #n_phase3 = 2000,
-  #n_starts = 1,
-  #max_iters = 5
 )
 
 str(sup_clusters)
@@ -135,7 +120,7 @@ DimPlot(cos_seurat_post, group.by = "InSituTypeID", reduction = "umap") +
 ```{r, warning=FALSE, message=FALSE}
 
 IST_heatmap <- heatmap(
-  sweep(unsup_clusters$profiles, 1, pmax(apply(unsup_clusters$profiles, 1, max), .2), "/"), 
+  sweep(sup_clusters$profiles, 1, pmax(apply(sup_clusters$profiles, 1, max), .2), "/"), 
   scale = "none",
   main = "Cluster mean expression profiles"
   )
@@ -145,19 +130,19 @@ IST_heatmap <- heatmap(
 ```{r, warning=FALSE, message=FALSE}
 
 cols <- c(
-  "#991919", "#ffcba5", "#e68f66", "#c56133", "#96341c", "#632819", "#ffc413",
-  "#f47a22", "#2f2aa0", "#b732cc", "#772b9d", "#f07cab", "#d30b94", "#edeff3", 
-  "#5d4c86"
+  "#cc0000", "#ff3399", "#ffff66", "#ffb366", "#b30059", "#33ddff", "#ff3399",
+  "#9966ff", "#bb99ff", "#ff8000", "#ff99cc", "#ff9933", "#5500ff", "#7733ff", 
+  "#ccff33"
 )
 
-cols <- cols[seq_along(unique(unsup_clusters$clust))]
-names(cols) <- unique(unsup_clusters$clust)
+cols <- cols[seq_along(unique(sup_clusters$clust))]
+names(cols) <- unique(sup_clusters$clust)
 
 umap_df <- as.data.frame(Embeddings(cos_seurat_post, "umap"))
-umap_df$cluster <- factor(unsup_clusters$cluster)
+umap_df$cluster <- factor(sup_clusters$clust)
 
 umap_plot <- ggplot(umap_df, aes(x = umap_1, y = umap_2, color = cluster)) +
-  geom_point(alpha = 0.8, size = 1.5) +
+  geom_point(alpha = 0.8, size = 0.5) +
   scale_color_manual(values = cols) +
   theme_minimal() +
   theme(legend.position = "right") +
@@ -166,13 +151,14 @@ umap_plot <- ggplot(umap_df, aes(x = umap_1, y = umap_2, color = cluster)) +
     x = "UMAP 1",
     y = "UMAP 2",
     colour = "Cell types"
-  )
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 2, shape = 15)))
 
 spatial_df <- as.data.frame(Embeddings(cos_seurat_post, "spatial"))
-spatial_df$cluster <- factor(unsup_clusters$clust)
+spatial_df$cluster <- factor(sup_clusters$clust)
 
 spatial_plot <- ggplot(spatial_df, aes(x = spatial_1, y = spatial_2, color = cluster)) +
-  geom_point(alpha = 0.8, size = 1.5) +
+  geom_point(alpha = 0.8, size = 0.5) +
   scale_color_manual(values = cols) +
   theme_minimal() +
   theme(legend.position = "right") +
@@ -181,7 +167,8 @@ spatial_plot <- ggplot(spatial_df, aes(x = spatial_1, y = spatial_2, color = clu
     x = "",
     y = "",
     colour = "Cell types"
-  )
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3, shape = 15)))
 
 umap_plot
 spatial_plot
