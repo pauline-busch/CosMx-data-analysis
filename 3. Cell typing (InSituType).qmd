@@ -101,26 +101,12 @@ str(sup_clusters)
 
 ```
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 
 cos_seurat_post$InSituTypeID <- sup_clusters$clust
 
-heatmap(sweep(sup_clusters$profiles, 1,
-              pmax(apply(sup_clusters$profiles, 1, max), 0.2), "/"),
-        scale = "none",
-        main = "Mean cell expression by phenotype",
-        margins = c(10, 5))
-
-DimPlot(cos_seurat_post, group.by = "InSituTypeID", reduction = "umap") +
-  facet_wrap(vars(InSituTypeID), nrow = 5, ncol = 3)
-
-```
-
-
-```{r, warning=FALSE, message=FALSE}
-
 IST_heatmap <- heatmap(
-  sweep(sup_clusters$profiles, 1, pmax(apply(sup_clusters$profiles, 1, max), .2), "/"), 
+  sweep(sup_clusters$profiles, 1, pmax(apply(sup_clusters$profiles, 1, max), 0.2), "/"), 
   scale = "none",
   main = "Cluster mean expression profiles"
   )
@@ -154,6 +140,20 @@ umap_plot <- ggplot(umap_df, aes(x = umap_1, y = umap_2, color = cluster)) +
   ) +
   guides(color = guide_legend(override.aes = list(size = 2, shape = 15)))
 
+umap_plot_facet <- ggplot(umap_df, aes(x = umap_1, y = umap_2, color = cluster)) +
+  geom_point(alpha = 0.8, size = 0.5) +
+  scale_color_manual(values = cols) +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  labs(
+    title = "Cell Clusters in UMAP Space",
+    x = "UMAP 1",
+    y = "UMAP 2",
+    colour = "Cell types"
+  ) +
+  facet_wrap(vars(cluster), nrow = 5, ncol = 3) +
+  guides(color = guide_legend(override.aes = list(size = 2, shape = 15)))
+
 spatial_df <- as.data.frame(Embeddings(cos_seurat_post, "spatial"))
 spatial_df$cluster <- factor(sup_clusters$clust)
 
@@ -171,6 +171,7 @@ spatial_plot <- ggplot(spatial_df, aes(x = spatial_1, y = spatial_2, color = clu
   guides(color = guide_legend(override.aes = list(size = 3, shape = 15)))
 
 umap_plot
+umap_plot_facet
 spatial_plot
 
 ```
