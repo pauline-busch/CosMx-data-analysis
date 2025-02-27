@@ -18,14 +18,11 @@ library(SpatialExperiment)
 library(SpatialExperimentIO)
 library(SingleCellExperiment)
 library(Seurat)
-library(scater)
-library(harmony)
-library(InSituType)
 library(dplyr)
+library(outliers)
 library(ggplot2)
 library(ggthemes)
 library(ggpubr)
-library(ggExtra)
 
 ```
 
@@ -33,11 +30,13 @@ library(ggExtra)
 It is useful to count how many negative controls are being used, because this number will be used to calculate each cell’s mean negative control value. In this set of experiments there should be 20 negative controls present (to check: *sum(grepl("^Negative", rownames(cos_spe)))*)
 ```{r, warning=FALSE, message=FALSE}
 
-cos_path <- "C:/CosMx/Datasets/6k/TMA2" # Adjust file path if necessary
+TMAnr <- 2
+
+cos_path <- sprintf("C:/CosMx/Datasets/6k/TMA%s", TMAnr) # Adjust file path if necessary
 
 cos_spe <- readCosmxSXE(dirName = cos_path,
-                        countMatPattern = "TMA2_biomedx_MAR_6K_exprMat_file.csv",
-                        metaDataPattern = "TMA2_biomedx_MAR_6K_metadata_file.csv",
+                        countMatPattern = "exprMat_file.csv",
+                        metaDataPattern = "metadata_file.csv",
                         coordNames = c("CenterX_global_px", "CenterY_global_px")
 )
 
@@ -46,33 +45,58 @@ cos_spe <- cos_spe[!grepl("^(Negative|SystemControl)", rownames(cos_spe)), ]
 ```
 
 ## Assign patient groups
+On every slide we have four tissues from different patients that need to be assigned to their patient groups. In addition, the information which FOVs cover which tissue needs to be saved.
 ```{r, warning=FALSE, message=FALSE}
 
-fov_df = data.frame(fov = colData(cos_spe)$fov)
+SlideInfo <- readxl::read_excel("./Info/CosMx - TMA info.xlsx")
+
+TMAinfo <- SlideInfo %>% 
+  filter(TMA == TMAnr) %>% 
+  select(Treatment, FOV_lower, FOV_upper, AMX_pos) %>% 
+  arrange(FOV_lower)
+
+fov_df <- data.frame(fov = colData(cos_spe)$fov)
 
 group_assignment <- fov_df %>%
   mutate(group = case_when(
-    fov >= 1 & fov <= 37 ~ "anti-TNF-IR",
-    fov >= 38 & fov <= 87 ~ "Tx-naive-1",
-    fov >= 88 & fov <= 105 ~ "Tx-naive-2",
-    fov >= 106 & fov <= 162 ~ "csDMARD-IR"
+    fov >= TMAinfo$FOV_lower[1] & 
+    fov <= TMAinfo$FOV_upper[1] ~ TMAinfo$Treatment[1],
+    fov >= TMAinfo$FOV_lower[2] & 
+    fov <= TMAinfo$FOV_upper[2] ~ TMAinfo$Treatment[2],
+    fov >= TMAinfo$FOV_lower[3] &
+    fov <= TMAinfo$FOV_upper[3] ~ TMAinfo$Treatment[3],
+    fov >= TMAinfo$FOV_lower[4] & 
+    fov <= TMAinfo$FOV_upper[4] ~ TMAinfo$Treatment[4]
   ))
 
 colData(cos_spe)$group <- group_assignment$group
 
 slice_assignment <- fov_df %>%
   mutate(slice = case_when(
-    fov >= 1 & fov <= 37 ~ "slice_1_TL",
-    fov >= 38 & fov <= 87 ~ "slice_2_TR",
-    fov >= 88 & fov <= 105 ~ "slice_3_BL",
-    fov >= 106 & fov <= 162 ~ "slice_4_BR"
+    fov >= TMAinfo$FOV_lower[1] & 
+    fov <= TMAinfo$FOV_upper[1] ~ paste0("slice_1_", TMAinfo$AMX_pos[1]),
+    fov >= TMAinfo$FOV_lower[2] & 
+    fov <= TMAinfo$FOV_upper[2] ~ paste0("slice_2_", TMAinfo$AMX_pos[2]),
+    fov >= TMAinfo$FOV_lower[3] & 
+    fov <= TMAinfo$FOV_upper[3] ~ paste0("slice_3_", TMAinfo$AMX_pos[3]),
+    fov >= TMAinfo$FOV_lower[4] & 
+    fov <= TMAinfo$FOV_upper[4] ~ paste0("slice_4_", TMAinfo$AMX_pos[4])
   ))
 
 colData(cos_spe)$slice <- group_assignment$slice
 
 ```
 
+```{r, echo=FALSE}
+
+rm(group_assignment)
+rm(slice_assignment)
+
+```
+
+
 ## Preparation for QC (add metrics)
+### Cell QC
 ```{r, warning=FALSE, message=FALSE}
 
 # Calculate the fraction of negative control counts per cell
@@ -102,10 +126,54 @@ grubbs.flag <- function(numbers,p) {
 
 area_outliers <- grubbs.flag(colData(cos_spe)$Area, 0.01)
 colData(cos_spe)$Outlier <- area_outliers$Outlier
+
+```
+
+### FOV QC
+```{r, warning=FALSE, message=FALSE}
+
+fov_df$counts <- colData(cos_spe)$nCount_RNA
+fov_df$neg_counts <- colData(cos_spe)$nCount_negprobes
+c_summary <- fov_df %>% group_by(fov) %>% summarise(avg = mean(counts))
+nc_summary <- fov_df %>% group_by(fov) %>% summarise(median = median(neg_counts))
+
+# Flag low-quality FOVs
+low_quality_fovs_mean <- c_summary[c_summary$avg < 100, ]$fov
+
+cat("FOVs flagged by Mean method:", low_quality_fovs_mean, "\n")
+
+# Flag low-quality FOVs based on quantile method
+percentile <- tapply(fov_df$counts, fov_df$fov, quantile, probs = 0.9)
+low_quality_fovs_quantile <- nc_summary[percentile - nc_summary$median < 120, ]$fov
+
+cat("FOVs flagged by Quantile method:", low_quality_fovs_quantile, "\n")
+
+```
+
+```{r, echo=FALSE}
+
+rm(area_outliers)
+rm(c_summary)
+rm(nc_summary)
+rm(percentile)
+rm(fov_df)
+
 ```
 
 ## Filter cells according to QC and add to metadata
 ```{r, warning=FALSE, message=FALSE}
+
+Total <- cos_spe@colData@nrows
+Min_counts <- sum(colData(cos_spe)$nCount_RNA >= 50)
+Neg_frac <- sum(colData(cos_spe)$Neg_fraction <= 0.1) 
+Div_complex <- sum(colData(cos_spe)$Complexity > 1)
+Area_out <- sum(colData(cos_spe)$Outlier == FALSE)
+
+filter_stats <- data.frame(
+  QC = c("Minimum counts", "Negative fraction", "Complexity", "Area outlier"),
+  Cells_kept = c(Min_counts, Neg_frac, Div_complex, Area_out),
+  Cells_out = c(Total-Min_counts, Total-Neg_frac, Total-Div_complex, Total-Area_out)
+)
 
 high_quality_cells <- (
   colData(cos_spe)$nCount_RNA >= 50 &  # Minimum counts per cell
@@ -114,7 +182,22 @@ high_quality_cells <- (
     colData(cos_spe)$Outlier == FALSE # Exclude area outliers
 )
 
+Kept_cells = sum(high_quality_cells == TRUE)
+filter_stats <- rbind(filter_stats, c("QC Summary", Kept_cells, Total-Kept_cells))
+filter_stats[5,]
+
 colData(cos_spe)$to_keep <- high_quality_cells
+
+```
+
+```{r, echo=FALSE}
+
+rm(Kept_cells)
+rm(Area_out)
+rm(Neg_frac)
+rm(Div_complex)
+rm(Min_counts)
+rm(Total)
 
 ```
 
@@ -205,7 +288,7 @@ Outlier_base <-
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"))
 
-Outlier_plot <- ggMarginal(
+Outlier_plot <- ggExtra::ggMarginal(
   Outlier_base, type = "densigram", margins = "y"
   )
 
