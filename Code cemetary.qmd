@@ -1,0 +1,314 @@
+---
+title: "Code cemetary"
+author: "Pauline"
+date: today
+format: 
+    html:
+        self-contained: true
+        toc: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+## Cell area QC before introduction of Grubb's test
+```{r}
+
+# Identify cells with extreme area values (outliers)
+colData(cos_spe)$outlier <- colData(cos_spe)$Area > quantile(colData(cos_spe)$Area, 0.99) | 
+  colData(cos_spe)$Area < quantile(colData(cos_spe)$Area, 0.01)
+
+```
+
+## Pie charts for filter statistics from QC
+```{r, echo=FALSE}
+
+filter_plot1 <- ggplot(filter_stats, aes(x="", y = `QC summary`, fill = Status)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  facet_wrap(vars()) +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_void() 
+
+ggsave("QC summary.tiff",
+       path = file.path(cos_path, "QC"),
+       compression = 'lzw')
+
+filter_plot2 <- ggplot(filter_stats, aes(x="", y = `Minimum.counts`, fill = Status)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_void() 
+
+ggsave("Count QC.tiff",
+       path = file.path(cos_path, "QC"),
+       compression = 'lzw')
+
+filter_plot3 <- ggplot(filter_stats, aes(x="", y = `Negative.fraction`, fill = Status)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_void() 
+
+ggsave("Negfrac QC.tiff",
+       path = file.path(cos_path, "QC"),
+       compression = 'lzw')
+
+filter_plot4 <- ggplot(filter_stats, aes(x="", y = `Complexity`, fill = Status)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_void() 
+
+ggsave("Complexity QC.tiff",
+       path = file.path(cos_path, "QC"),
+       compression = 'lzw')
+
+filter_plot5 <- ggplot(filter_stats, aes(x="", y = `Area.outlier`, fill = Status)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_void() 
+
+ggsave("Area QC.tiff",
+       path = file.path(cos_path, "QC"),
+       compression = 'lzw')
+
+```
+
+## Testing markers from paper
+Lima, J. D. et al. Spatial mapping of rheumatoid arthritis synovial niches reveals specific macrophage networks associated with response to therapy. 2023.10.20.563040 https://doi.org/10.1101/2023.10.20.563040 (2023).
+
+```{r}
+
+mono_macro <- FeaturePlot(
+  cos_seurat, 
+  features = c("CD14", "FCGR3A", "CD68", "AIF1", "C1QA"), 
+  reduction = "umap"
+)
+
+resident_macro <- FeaturePlot(
+  cos_seurat, 
+  features = c("CD163", "MRC1", "MERTK", "LYVE1"), 
+  reduction = "umap"
+)
+
+inflam_macro <- FeaturePlot(
+  cos_seurat, 
+  features = c("ITGAX", "S100A12", "IL1B", "CCR2", "IFI6", "CLEC10A"), 
+  reduction = "umap"
+)
+
+```
+
+## Clustering
+```{r}
+
+counts_celltyping <- assay(cos_spe_final, "counts") %>% t()
+data("ioprofiles")
+data("iocolors")
+
+unsup_clusters <- insitutype(
+  x = counts_celltyping,
+  neg = negmean,
+  #assay_type = "RNA",
+  reference_profiles = ioprofiles,
+  update_reference_profiles = TRUE,
+  cohort = cohort,
+  # Enter your own per-cell background estimates here if you have them;
+  # otherwise insitutype will use the negprobes to estimate background for you.
+  bg = NULL,
+  # condensed to save time. n_clusts = 5:20 would be more optimal
+  n_clusts = 10:20,
+  # NULL value runs unsupervised clustering; entering a matrix here would run
+  # semi-supervised clustering.
+  n_phase1 = 200,
+  n_phase2 = 500,
+  n_phase3 = 2000,
+  n_starts = 1,
+  max_iters = 5
+)
+
+```
+
+##Analyzing FOVs (Patient groups)
+```{r}
+
+fov_groups <- list(
+  "anti-TNF-IR" = 1:37,
+  "Tx-naïve_1"  = 38:87,
+  "Tx-naïve_2"  = 88:105,
+  "csDMARD-IR"  = 106:162
+)
+
+cos_spe_tissues <- lapply(names(fov_groups), function(group) {
+  cos_spe_final[, colData(cos_spe_final)$fov %in% fov_groups[[group]]]
+})
+
+names(cos_spe_tissues) <- names(fov_groups)
+
+for (group in names(cos_spe_tissues)) {
+  tissue_coords <- as.data.frame(spatialCoords(cos_spe_tissues[[group]]))
+  colnames(tissue_coords) <- c("x", "y")
+  
+  plot(ggplot(tissue_coords, aes(x = x, y = y)) +
+    geom_point(alpha = 0.5, color = "blue") +
+    ggtitle(paste("FOV Group:", group)) +
+    theme_minimal())
+}
+
+```
+
+# Clustering workflow without ´Harmony´ and comparison
+## Data processing and PCA
+```{r, warning=FALSE, message=FALSE}
+
+# Normalize the data
+cos_seurat <- NormalizeData(cos_seurat)
+
+# Identify variable features
+cos_seurat <- FindVariableFeatures(cos_seurat)
+
+# Scale data
+cos_seurat <- ScaleData(cos_seurat)
+
+# Run PCA
+cos_seurat <- RunPCA(cos_seurat, npcs = 20)
+
+```
+
+## UMAP with Seurat (without Harmony)
+```{r, warning=FALSE, message=FALSE}
+
+# Run UMAP and cluster analysis
+cos_seurat <- RunUMAP(cos_seurat, dims = 1:20)
+cos_seurat <- FindNeighbors(cos_seurat, dims = 1:20)
+
+# Adjust resolution to achieve ~n_clusters
+cos_seurat <- FindClusters(cos_seurat, resolution = 0.4) 
+
+# Plot UMAP and clusters
+UMAP_pre <- DimPlot(cos_seurat, reduction = "umap", label = TRUE)
+
+# Save the Seurat object for further use
+# saveRDS(cos_seurat, file.path(cos_path, "rds files/cos_seurat_pre.rds"))
+
+# Plot clusters with spatial context
+spatial_clusters <- DimPlot(cos_seurat, reduction = "spatial", label = FALSE)
+
+umap_patient <- DimPlot(cos_seurat, reduction = "umap", group.by = "group", label = FALSE)
+
+```
+
+## Comparison UMAP with/without batch correction
+```{r}
+
+# Compare UMAPs before and after Harmony
+UMAP_clusters <- annotate_figure(
+  ggarrange(UMAP_pre, UMAP_post, 
+            labels = c("A", "B"), 
+            ncol = 2, nrow = 1),
+  top = "UMAP clusters before and after batch correction")
+
+
+ggsave("UMAP_comparison.tiff",
+       path = file.path(cos_path, "Clusters"),
+       compression = 'lzw')
+
+patient_clusters <- annotate_figure(
+  ggarrange(umap_patient_pre, umap_patient_post, 
+            labels = c("A", "B"), 
+            ncol = 2, nrow = 1),
+  top = "Patient clusters before and after batch correction")
+
+ggsave("UMAP_patient_comparison.tiff",
+       path = file.path(cos_path, "Clusters"),
+       compression = 'lzw')
+
+spatial <- annotate_figure(
+  ggarrange(spatial_clusters_pre, spatial_clusters_post, 
+            labels = c("A", "B"),
+            ncol = 2, nrow = 1),
+  top = "Clusters spatial distribution before and after batch correction")
+
+ggsave("UMAP_spatial_comparison.tiff",
+       path = file.path(cos_path, "Clusters"),
+       compression = 'lzw')
+
+```
+
+# CellID cell typing (Reto paper)
+## Cluster markers
+```{r, warning=FALSE, message=FALSE}
+
+cos_path <- "C:/CosMx/Datasets/6k/TMA2"
+
+# Get the last version of the Seurat object
+cos_seurat_harmony <- readRDS(file.path(cos_path, "rds files/cos_seurat_harmony.rds"))
+
+usedgeneset <- readr::read_tsv("https://panglaodb.se/markers/PanglaoDB_markers_27_Mar_2020.tsv.gz")
+
+usedgeneset$organ %>% unique
+
+# restricting the analysis to pancreas specific gene signatues
+usedgeneset_sub <- usedgeneset %>% 
+  filter(organ %in% c("Connective tissue",
+                      "Epithelium",
+                      "Blood",
+                      "Immune system",
+                      "Vasculature"))
+
+# restricting to human specific genes
+usedgeneset_sub <- usedgeneset_sub %>% filter(str_detect(species,"Hs"))
+
+usedgeneset_sub <- usedgeneset_sub %>% 
+  filter(`cell type` %in% c("Dendritic cells",
+                            "B cells",
+                            "Fibroblasts",
+                            "Macrophages",
+                            "Monocytes",
+                            "Mast cells",
+                            "Neutrophils",
+                            "NK cells",
+                            "T cells",
+                            "Endothelial cells", 
+                            "Neutrophils",
+                            "Pericytes"))
+
+usedgeneset_sub <- usedgeneset_sub %>%  
+  group_by(`cell type`) %>%  
+  summarise(geneset = list(`official gene symbol`))
+
+pancreas_gs <- setNames(usedgeneset_sub$geneset, usedgeneset_sub$`cell type`)
+
+cos_seurat_harmony <- RunMCA(cos_seurat_harmony)
+
+DimPlot(cos_seurat_harmony, reduction = "mca")
+
+HGT_all_gs <- RunCellHGT(cos_seurat_harmony, pathways = pancreas_gs, minSize = 5)
+
+all_gs_prediction <- rownames(HGT_all_gs)[apply(HGT_all_gs, 2, which.max)]
+all_gs_prediction_signif <- all_gs_prediction
+all_gs_prediction_signif <- ifelse(apply(HGT_all_gs, 2, max)>2, yes = all_gs_prediction, "unassigned")
+
+cos_seurat_harmony$main_celltype_cellid <- all_gs_prediction_signif
+table(cos_seurat_harmony$main_celltype_cellid, cos_seurat_harmony$group)
+
+DimPlot(cos_seurat_harmony, group.by = "main_celltype_cellid", label = TRUE)
+
+spatial_df <- as.data.frame(Embeddings(cos_seurat_harmony, "spatial"))
+spatial_df$cluster <- factor(cos_seurat_harmony@meta.data[["main_celltype_cellid"]])
+
+spatial_plot <- ggplot(spatial_df, aes(x = spatial_1, y = spatial_2, color = cluster)) +
+  geom_point(alpha = 0.8, size = 0.5) +
+  #scale_color_manual(values = cols) +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  labs(
+    title = "Spatial arrangement of cell clusters",
+    x = "",
+    y = "",
+    colour = "Cell types"
+  )
+
+```
