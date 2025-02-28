@@ -30,16 +30,18 @@ library(ggpubr)
 It is useful to count how many negative controls are being used, because this number will be used to calculate each cell’s mean negative control value. In this set of experiments there should be 20 negative controls present (to check: *sum(grepl("^Negative", rownames(cos_spe)))*)
 ```{r, warning=FALSE, message=FALSE}
 
-TMAnr <- 2
+TMAnr <- 2 # Define Tissue Microarray (TMA) number
 
-cos_path <- sprintf("C:/CosMx/Datasets/6k/TMA%s", TMAnr) # Adjust file path if necessary
+cos_path <- sprintf("C:/CosMx/Datasets/6k/TMA%s", TMAnr) # Add path
 
+# Read in CosMx Spatial Experiment data
 cos_spe <- readCosmxSXE(dirName = cos_path,
                         countMatPattern = "exprMat_file.csv",
                         metaDataPattern = "metadata_file.csv",
                         coordNames = c("CenterX_global_px", "CenterY_global_px")
 )
 
+# Remove system control and negative control genes
 cos_spe <- cos_spe[!grepl("^(Negative|SystemControl)", rownames(cos_spe)), ]
 
 ```
@@ -48,47 +50,54 @@ cos_spe <- cos_spe[!grepl("^(Negative|SystemControl)", rownames(cos_spe)), ]
 On every slide we have four tissues from different patients that need to be assigned to their patient groups. In addition, the information which FOVs cover which tissue needs to be saved.
 ```{r, warning=FALSE, message=FALSE}
 
-SlideInfo <- readxl::read_excel("./Info/CosMx - TMA info.xlsx")
+SlideInfo <- readxl::read_excel("./Info/CosMx - TMA info.xlsx") # TMA info
 
+# Extract relevant information for the current TMA
 TMAinfo <- SlideInfo %>% 
   filter(TMA == TMAnr) %>% 
   select(Treatment, FOV_lower, FOV_upper, AMX_pos) %>% 
   arrange(FOV_lower)
 
+# Create a dataframe for field of views (FOVs)
 fov_df <- data.frame(fov = colData(cos_spe)$fov)
 
+# Assign treatment groups based on FOV range
 group_assignment <- fov_df %>%
   mutate(group = case_when(
-    fov >= TMAinfo$FOV_lower[1] & 
-    fov <= TMAinfo$FOV_upper[1] ~ TMAinfo$Treatment[1],
-    fov >= TMAinfo$FOV_lower[2] & 
-    fov <= TMAinfo$FOV_upper[2] ~ TMAinfo$Treatment[2],
-    fov >= TMAinfo$FOV_lower[3] &
-    fov <= TMAinfo$FOV_upper[3] ~ TMAinfo$Treatment[3],
-    fov >= TMAinfo$FOV_lower[4] & 
-    fov <= TMAinfo$FOV_upper[4] ~ TMAinfo$Treatment[4]
+    fov >= TMAinfo$FOV_lower[1] & fov <= TMAinfo$FOV_upper[1] 
+    ~ paste0(TMAinfo$Treatment[1], TMAinfo$AMX_pos[1]),
+    fov >= TMAinfo$FOV_lower[2] & fov <= TMAinfo$FOV_upper[2] 
+    ~ paste0(TMAinfo$Treatment[2], TMAinfo$AMX_pos[2]),
+    fov >= TMAinfo$FOV_lower[3] & fov <= TMAinfo$FOV_upper[3] 
+    ~ paste0(TMAinfo$Treatment[3], TMAinfo$AMX_pos[3]),
+    fov >= TMAinfo$FOV_lower[4] & fov <= TMAinfo$FOV_upper[4] 
+    ~ paste0(TMAinfo$Treatment[4], TMAinfo$AMX_pos[4])
   ))
 
+# Store group assignments in metadata
 colData(cos_spe)$group <- group_assignment$group
 
+# Assign slice information based on FOV range
 slice_assignment <- fov_df %>%
   mutate(slice = case_when(
-    fov >= TMAinfo$FOV_lower[1] & 
-    fov <= TMAinfo$FOV_upper[1] ~ paste0("slice_1_", TMAinfo$AMX_pos[1]),
-    fov >= TMAinfo$FOV_lower[2] & 
-    fov <= TMAinfo$FOV_upper[2] ~ paste0("slice_2_", TMAinfo$AMX_pos[2]),
-    fov >= TMAinfo$FOV_lower[3] & 
-    fov <= TMAinfo$FOV_upper[3] ~ paste0("slice_3_", TMAinfo$AMX_pos[3]),
-    fov >= TMAinfo$FOV_lower[4] & 
-    fov <= TMAinfo$FOV_upper[4] ~ paste0("slice_4_", TMAinfo$AMX_pos[4])
+    fov >= TMAinfo$FOV_lower[1] & fov <= TMAinfo$FOV_upper[1] 
+    ~ paste0("slice_1_", TMAinfo$AMX_pos[1]),
+    fov >= TMAinfo$FOV_lower[2] & fov <= TMAinfo$FOV_upper[2] 
+    ~ paste0("slice_2_", TMAinfo$AMX_pos[2]),
+    fov >= TMAinfo$FOV_lower[3] & fov <= TMAinfo$FOV_upper[3] 
+    ~ paste0("slice_3_", TMAinfo$AMX_pos[3]),
+    fov >= TMAinfo$FOV_lower[4] & fov <= TMAinfo$FOV_upper[4] 
+    ~ paste0("slice_4_", TMAinfo$AMX_pos[4])
   ))
 
-colData(cos_spe)$slice <- group_assignment$slice
+# Store slice assignments in metadata
+colData(cos_spe)$slice <- slice_assignment$slice
 
 ```
 
 ```{r, echo=FALSE}
 
+rm(SlideInfo)
 rm(group_assignment)
 rm(slice_assignment)
 
@@ -103,12 +112,11 @@ rm(slice_assignment)
 colData(cos_spe)$Neg_fraction <- 
   colData(cos_spe)$nCount_negprobes / colData(cos_spe)$nCount_RNA
 
-# Calculate RNA complexity (total counts divided by detected genes)
+# Calculate RNA complexity
 colData(cos_spe)$Complexity <- 
   colData(cos_spe)$nCount_RNA / colData(cos_spe)$nFeature_RNA
 
-# Identify cells with extreme area values (outliers)
-
+# Function to apply grubbs test that flags all ouliers (not just 1)
 grubbs.flag <- function(numbers,p) {
   outliers <- NULL
   test <- numbers
@@ -124,14 +132,76 @@ grubbs.flag <- function(numbers,p) {
   return(data.frame(X=numbers,Outlier=(numbers %in% outliers)))
 }
 
+# Identify cells with extreme area values (outliers)
 area_outliers <- grubbs.flag(colData(cos_spe)$Area, 0.01)
 colData(cos_spe)$Outlier <- area_outliers$Outlier
 
 ```
 
+```{r}
+
+# Get slice information
+slices <- unique(colData(cos_spe)$slice)
+
+# Initialize an empty data frame
+filter_stats <- data.frame()
+
+# Loop over each slice and compute statistics
+for (slice in slices) {
+  total_cells <- sum(colData(cos_spe)$slice == slice)
+  min_counts <- sum(colData(cos_spe)$nCount_RNA >= 50 & colData(cos_spe)$slice == slice)
+  neg_frac <- sum(colData(cos_spe)$Neg_fraction <= 0.1 & colData(cos_spe)$slice == slice)
+  div_complex <- sum(colData(cos_spe)$Complexity > 1 & colData(cos_spe)$slice == slice)
+  area_out <- sum(colData(cos_spe)$Outlier == FALSE & colData(cos_spe)$slice == slice)
+  kept_cells <- sum(colData(cos_spe)$to_keep == TRUE & colData(cos_spe)$slice == slice)
+  
+  # Compute percentages
+  kept_fraction <- kept_cells / total_cells
+  discarded_fraction <- 1 - kept_fraction
+  
+  # Append results to the table
+  filter_stats <- rbind(
+    filter_stats, 
+    data.frame(
+      Slice = slice,
+      "Total Cells" = total_cells,
+      "Cells Kept" = kept_cells,
+      "Cells Discarded" = total_cells - kept_cells,
+      "Kept Fraction" = round(kept_fraction, 4),
+      "Discarded Fraction" = round(discarded_fraction, 4),
+      "Minimum Counts" = min_counts,
+      "Negative Fraction" = neg_frac,
+      "Complexity" = div_complex,
+      "Area Outlier" = area_out
+    )
+  )
+}
+
+filter_stats
+
+```
+
+```{r, echo=FALSE}
+
+rm(area_outliers)
+rm(area_out)
+rm(neg_frac)
+rm(div_complex)
+rm(min_counts)
+rm(total_cells)
+rm(kept_cells)
+rm(kept_fraction)
+rm(discarded_fraction)
+rm(slice)
+rm(slices)
+
+```
+
+
 ### FOV QC
 ```{r, warning=FALSE, message=FALSE}
 
+# Prepare a data frame with mean counts and median negative counts per FOV
 fov_df$counts <- colData(cos_spe)$nCount_RNA
 fov_df$neg_counts <- colData(cos_spe)$nCount_negprobes
 c_summary <- fov_df %>% group_by(fov) %>% summarise(avg = mean(counts))
@@ -152,7 +222,6 @@ cat("FOVs flagged by Quantile method:", low_quality_fovs_quantile, "\n")
 
 ```{r, echo=FALSE}
 
-rm(area_outliers)
 rm(c_summary)
 rm(nc_summary)
 rm(percentile)
@@ -163,18 +232,7 @@ rm(fov_df)
 ## Filter cells according to QC and add to metadata
 ```{r, warning=FALSE, message=FALSE}
 
-Total <- cos_spe@colData@nrows
-Min_counts <- sum(colData(cos_spe)$nCount_RNA >= 50)
-Neg_frac <- sum(colData(cos_spe)$Neg_fraction <= 0.1) 
-Div_complex <- sum(colData(cos_spe)$Complexity > 1)
-Area_out <- sum(colData(cos_spe)$Outlier == FALSE)
-
-filter_stats <- data.frame(
-  QC = c("Minimum counts", "Negative fraction", "Complexity", "Area outlier"),
-  Cells_kept = c(Min_counts, Neg_frac, Div_complex, Area_out),
-  Cells_out = c(Total-Min_counts, Total-Neg_frac, Total-Div_complex, Total-Area_out)
-)
-
+# Get a logical vector to identify cells that pass the QC
 high_quality_cells <- (
   colData(cos_spe)$nCount_RNA >= 50 &  # Minimum counts per cell
     colData(cos_spe)$Neg_fraction <= 0.1 &  # Negative probe fraction
@@ -182,22 +240,8 @@ high_quality_cells <- (
     colData(cos_spe)$Outlier == FALSE # Exclude area outliers
 )
 
-Kept_cells = sum(high_quality_cells == TRUE)
-filter_stats <- rbind(filter_stats, c("QC Summary", Kept_cells, Total-Kept_cells))
-filter_stats[5,]
-
+# Store QC information in metadata
 colData(cos_spe)$to_keep <- high_quality_cells
-
-```
-
-```{r, echo=FALSE}
-
-rm(Kept_cells)
-rm(Area_out)
-rm(Neg_frac)
-rm(Div_complex)
-rm(Min_counts)
-rm(Total)
 
 ```
 
@@ -206,29 +250,17 @@ rm(Total)
 
 nCount_RNA_plot <- 
   ggplot(colData(cos_spe), aes(x = nCount_RNA)) +
-  
-  # Adjust amount of bins or use geom_density for more or less details
   geom_density(fill = "blue", colour = "blue", alpha = 0.1) +
-  
-  # Change intercept to check cut-off values (e.g., "50")
-  geom_vline(xintercept = 50, color = "red") + 
-  annotate("text", 
-    label="Cutoff: Total counts < 50", 
-    x=120, 
-    y=0.0006, 
-    angle=90, 
-    size=3.5, 
-    color="red") +
-  
+  geom_vline(xintercept = 50, color = "red") + # xintercept = cut-off value
+  annotate("text", label="Cutoff: Total counts < 50", 
+           x=120, y=0.0006, angle=90, size=3.5, color="red") +
   xlim(0, 2000) +
-  
-  # Turn on/off to check for individual groups
-  # facet_wrap(vars(group)) +
+
+  # facet_wrap(vars(group)) + # Turn on/off to check for individual groups
   
   labs(title = "Total transcript counts per cell (density)", 
        x = "Transcript count", 
        y = NULL) +
-  
   theme(plot.title = element_text(face = "bold"))
 
 ```
@@ -238,11 +270,9 @@ nCount_RNA_plot <-
 nCount_RNA_grouped <- 
   ggplot(colData(cos_spe), aes(x = factor(group), y = nCount_RNA)) +
   geom_boxplot(fill = "blue", alpha = 0.5) +
-  
   labs(title = "Total transcript counts per cell (grouped)", 
        x = NULL, 
        y = "Transcript count per cell") +
-  
   theme(plot.title = element_text(face = "bold"))
 
 ```
@@ -252,24 +282,17 @@ nCount_RNA_grouped <-
 Neg_fraction_plot <- 
   ggplot(colData(cos_spe), aes(x = Neg_fraction)) +
   geom_histogram(binwidth = 0.01, fill = "purple", color = "purple", alpha = 0.6) +
+  geom_vline(xintercept = 0.1, # xintercept = cut-off value
+             linetype = "dashed", 
+             color = "red") + 
+  annotate("text", label="~0.0006% of cells > 0.01", 
+           x=0.2, y=40000, size=4.5, color="red") +
   
-  # Change intercept to check cut-off values (e.g., "50")
-  geom_vline(xintercept = 0.1, linetype = "dashed", color = "red") +
-  
-  annotate("text", 
-    label="~0.0006% of cells > 0.01", 
-    x=0.2, 
-    y=40000, 
-    size=4.5, 
-    color="red") +
-  
-  # Turn on/off to check for individual groups
-  # facet_wrap(vars(group)) +
+  # facet_wrap(vars(group)) + # Turn on/off to check for individual groups
   
   labs(title = "Negative fraction",
        x = "Negative count / total transcript count", 
        y = NULL) +
-  
   theme(plot.title = element_text(face = "bold"))
 
 ```
@@ -280,11 +303,9 @@ Outlier_base <-
   ggplot(colData(cos_spe), aes(x = nCount_RNA, y = Area.um2, color = Outlier)) +
   geom_point(alpha = 0.5) +
   scale_color_manual(values = c("blue", "red")) +
-  
   labs(title = "Cell areas", 
        x = "Total count", 
        y = "Area [µm²]") +
-
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"))
 
@@ -299,16 +320,13 @@ Outlier_plot <- ggExtra::ggMarginal(
 Complexity_plot <- 
   ggplot(colData(cos_spe), aes(x = nCount_RNA, y = nFeature_RNA, color = to_keep)) +
   geom_point(alpha = 0.5) +
-  scale_color_manual(values = c("blue", "red")) +
-  
+  scale_color_manual(values = c("red", "blue")) +
   labs(title = "Complexity", 
        x = "Total counts", 
        y = "Detected genes") +
-  
   scale_x_log10() +
   scale_y_log10() +
   geom_density_2d(color = "black", alpha = 0.5) +
-
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"))
 
@@ -322,13 +340,12 @@ Spatial_filter <-
     y = CenterY_global_px, 
     color = colData(cos_spe)$to_keep)) +
   geom_point(size = 0.5) +
-  scale_color_manual(values = c("blue", "red")) +
-  
+  scale_color_manual(values = c("red", "blue")) +
   labs(title = "Overview: Which cells are kept?", 
        x = "X-coordinate", 
        y = "Y-coordinate",
        color = "to_keep") +
-  
+  guides(color = guide_legend(override.aes = list(size = 3, shape = 15))) +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"))
 
@@ -337,7 +354,6 @@ ggsave("Spatial_filter.tiff",
        compression = 'lzw')
 
 ```
-
 
 ### Save figures to TMA folder
 ```{r, warning=FALSE, message=FALSE}
@@ -373,7 +389,7 @@ Figure3 <- ggarrange(Outlier_plot,
 
 Figure3
 
-ggsave("Complexity.tiff",
+ggsave("Area outliers.tiff",
        path = file.path(cos_path, "QC"),
        compression = 'lzw')
 
@@ -392,10 +408,25 @@ ggsave("Summary.pdf",
 
 ```
 
+```{r, echo=FALSE}
+
+rm(nCount_RNA_plot)
+rm(nCount_RNA_grouped)
+rm(Neg_fraction_plot)
+rm(Outlier_base)
+rm(Outlier_plot)
+rm(Complexity_plot)
+rm(Spatial_filter)
+rm(Figure1)
+rm(Figure2)
+rm(Figure3)
+
+```
 
 ## Subset the `SpatialExperiment` object to retain high-quality cells
 ```{r, warning=FALSE, message=FALSE}
 
+# Discard cells that didn't pass the QC
 cos_spe_filtered <- cos_spe[, high_quality_cells]
 
 # Save the final SpatialExperiment objects for further use
