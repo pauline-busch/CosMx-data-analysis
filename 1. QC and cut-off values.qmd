@@ -65,13 +65,13 @@ fov_df <- data.frame(fov = colData(cos_spe)$fov)
 group_assignment <- fov_df %>%
   mutate(group = case_when(
     fov >= TMAinfo$FOV_lower[1] & fov <= TMAinfo$FOV_upper[1] 
-    ~ paste0(TMAinfo$Treatment[1], TMAinfo$AMX_pos[1]),
+    ~ paste0(TMAinfo$Treatment[1], "_", TMAinfo$AMX_pos[1]),
     fov >= TMAinfo$FOV_lower[2] & fov <= TMAinfo$FOV_upper[2] 
-    ~ paste0(TMAinfo$Treatment[2], TMAinfo$AMX_pos[2]),
+    ~ paste0(TMAinfo$Treatment[2], "_", TMAinfo$AMX_pos[2]),
     fov >= TMAinfo$FOV_lower[3] & fov <= TMAinfo$FOV_upper[3] 
-    ~ paste0(TMAinfo$Treatment[3], TMAinfo$AMX_pos[3]),
+    ~ paste0(TMAinfo$Treatment[3], "_", TMAinfo$AMX_pos[3]),
     fov >= TMAinfo$FOV_lower[4] & fov <= TMAinfo$FOV_upper[4] 
-    ~ paste0(TMAinfo$Treatment[4], TMAinfo$AMX_pos[4])
+    ~ paste0(TMAinfo$Treatment[4], "_", TMAinfo$AMX_pos[4])
   ))
 
 # Store group assignments in metadata
@@ -321,12 +321,12 @@ Complexity_plot <-
   ggplot(colData(cos_spe), aes(x = nCount_RNA, y = nFeature_RNA, color = to_keep)) +
   geom_point(alpha = 0.5) +
   scale_color_manual(values = c("red", "blue")) +
+  geom_density_2d(color = "black", alpha = 0.75) +
   labs(title = "Complexity", 
        x = "Total counts", 
        y = "Detected genes") +
   scale_x_log10() +
   scale_y_log10() +
-  geom_density_2d(color = "black", alpha = 0.5) +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"))
 
